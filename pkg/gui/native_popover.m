@@ -1,4 +1,5 @@
 #import "native_internal.h"
+#import <malloc/malloc.h>
 
 // One AppKit surface: the battery overview and a deeper, sortable System page.
 // All frames are points (not image pixels); text never sits on a power ribbon.
@@ -782,6 +783,12 @@ void BattRecyclePopover(BattMenuController *controller) {
     popover.contentSize = viewController.view.frame.size;
     popover.contentViewController = viewController;
     controller.popover = popover;
+    // Opening the popover peaks well above 100 MB; once its buffers and
+    // samples are released, hand the freed malloc pages back to the system
+    // so an idle menu-bar app returns to its launch footprint.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        if (!controller.popover.isShown) malloc_zone_pressure_relief(NULL, 0);
+    });
 }
 void BattRefreshPopover(BattMenuController *controller, double cpu, double memory) {
     WattDashboard *view = (WattDashboard *)controller.popover.contentViewController.view;
