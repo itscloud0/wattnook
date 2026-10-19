@@ -38,3 +38,9 @@ func readBatteryTemperature(reader temperatureReader, iokit float64) (float64, e
 func validTemperature(v float64) bool {
 	return !math.IsNaN(v) && !math.IsInf(v, 0) && v > 0 && v <= 100
 }
+
+// BatteryTemperature returns the hottest valid battery thermistor, falling
+// back to IOKit's reading when the SMC sensors are unavailable.
+func BatteryTemperature(reader temperatureReader, iokit float64) (float64, error) {
+	return readBatteryTemperature(reader, iokit)
+}

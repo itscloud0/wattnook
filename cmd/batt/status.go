@@ -274,8 +274,8 @@ func NewStatusCommand() *cobra.Command {
 				cmd.Println("  Legacy sleep controls: " + bold("unsupported/not required"))
 			}
 			cmd.Printf("  Allow non-root users to access the daemon: %s\n", bool2Text(cfg.AllowNonRootAccess()))
-			if data.capabilities.ChargeControlMode == compatibility.ChargeControlNative {
-				cmd.Println("  Custom heat protection: unavailable with Apple native limits")
+			if !data.capabilities.Supports(compatibility.FeatureHeatProtection) {
+				cmd.Println("  Custom heat protection: unavailable on this Mac")
 			} else if cfg.HeatProtectionEnabled() {
 				state := "monitoring"
 				if data.heatProtection != nil && data.heatProtection.Paused {

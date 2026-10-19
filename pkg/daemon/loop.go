@@ -401,12 +401,16 @@ func maintainLoopInner(ignoreMissedLoops bool) bool {
 
 	switch capabilities.ChargeControlMode {
 	case compatibility.ChargeControlNative:
+		ok := true
 		if nativeThermal != nil {
-			// Retire owned holds, but never cut AC as a substitute for battery
-			// charge inhibition, including configs saved by earlier builds.
-			return nativeThermal.reconcile(false, conf.HeatPauseTemperatureCelsius(), conf.HeatResumeTemperatureCelsius())
+			// Retire owned adapter holds, but never cut AC as a substitute for
+			// battery charge inhibition, including configs saved by earlier builds.
+			ok = nativeThermal.reconcile(false, conf.HeatPauseTemperatureCelsius(), conf.HeatResumeTemperatureCelsius())
 		}
-		return false
+		if heatHold != nil {
+			heatHold.reconcile(conf.HeatProtectionEnabled(), conf.HeatPauseTemperatureCelsius(), conf.HeatResumeTemperatureCelsius())
+		}
+		return ok
 	case compatibility.ChargeControlFirmware:
 		return maintainFirmwareChargeLimit()
 	case compatibility.ChargeControlLegacy:

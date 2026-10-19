@@ -97,6 +97,7 @@ func Run(configPath string, unixSocketPath string, allowNonRoot bool) error {
 		return fmt.Errorf("open Apple SMC: %w", err)
 	}
 	if smcConn.ChargeControlMode() == compatibility.ChargeControlUnsupported {
+		releaseStaleChargeHold(configPath)
 		controller, probeErr := powerui.New()
 		if probeErr != nil {
 			logrus.WithError(probeErr).Warn("native charge control unavailable")
@@ -108,6 +109,7 @@ func Run(configPath string, unixSocketPath string, allowNonRoot bool) error {
 	logrus.WithFields(capabilityLogFields(capabilities)).Info("detected hardware capabilities")
 	disableUnsupportedConfiguredFeatures()
 	initializeNativeThermal(configPath)
+	initializeHeatHold(configPath)
 
 	// Initialize calibration state before the scheduler and main loop can use it.
 	if configPath != "" {

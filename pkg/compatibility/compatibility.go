@@ -32,6 +32,9 @@ type Capabilities struct {
 	Calibration       bool              `json:"calibration"`
 	SupportedLimits   []int             `json:"supportedLimits,omitempty"`
 	ThermalAdapter    bool              `json:"thermalAdapter"`
+	// ChargeHold reports charge-only Heat Protection through Apple's
+	// top-off protection hold plus a CHIE re-evaluation pulse (macOS 27).
+	ChargeHold bool `json:"chargeHold"`
 }
 
 // Permissive returns the fallback used by clients talking to an older or
@@ -62,8 +65,11 @@ func (c Capabilities) Supports(feature Feature) bool {
 	case FeatureCalibration:
 		return c.Calibration
 	case FeatureHeatProtection:
-		// Adapter input inhibition is not battery charge inhibition. CHIE
-		// availability must never advertise charge-only thermal protection.
+		// Adapter input inhibition alone is not battery charge inhibition.
+		// Native mode qualifies only through the verified charge-hold sequence.
+		if c.ChargeControlMode == ChargeControlNative {
+			return c.ChargingControl && c.ChargeHold
+		}
 		return c.ChargingControl && c.ChargeControlMode == ChargeControlLegacy
 	default:
 		return true

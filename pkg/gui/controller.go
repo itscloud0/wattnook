@@ -350,7 +350,7 @@ func (c *menuController) updateTelemetry() {
 func (c *menuController) updateHeatProtection(conf config.Config, status *client.HeatProtectionStatus) {
 	if !c.capabilities.Supports(compatibility.FeatureHeatProtection) {
 		c.heatPaused = false
-		c.menu.setTitle(itemHeatProtection, "Custom heat protection unavailable with Apple's native charge limit")
+		c.menu.setTitle(itemHeatProtection, "Heat Protection unavailable on this Mac")
 		return
 	}
 	enabled := conf.HeatProtectionEnabled()

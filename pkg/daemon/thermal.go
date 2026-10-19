@@ -44,7 +44,7 @@ var (
 )
 
 func getHeatProtectionStatus() HeatProtectionStatus {
-	if capabilities.ChargeControlMode == compatibility.ChargeControlNative && !capabilities.ThermalAdapter {
+	if capabilities.ChargeControlMode == compatibility.ChargeControlNative && !capabilities.ChargeHold && !capabilities.ThermalAdapter {
 		return HeatProtectionStatus{LastError: "Custom heat protection unavailable with Apple's native charge limit", UpdatedAt: time.Now()}
 	}
 	heatProtectionMu.RLock()

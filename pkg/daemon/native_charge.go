@@ -20,6 +20,12 @@ func setNativeLimit(c *gin.Context, limit int) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, "Choose one of the supported Apple charge limits")
 		return
 	}
+	maintainLoopInnerLock.Lock()
+	defer maintainLoopInnerLock.Unlock()
+	if heatHold != nil && heatHold.holder.Active() {
+		c.AbortWithStatusJSON(http.StatusConflict, "Heat Protection is pausing charging; change the Apple limit after the battery cools")
+		return
+	}
 	if err := nativeCharge.SetLimit(limit); err != nil {
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, err.Error())
 		return
@@ -32,6 +38,11 @@ func resetChargeControlOnShutdown() {
 	if capabilities.ChargeControlMode == compatibility.ChargeControlNative {
 		maintainLoopInnerLock.Lock()
 		defer maintainLoopInnerLock.Unlock()
+		if heatHold != nil {
+			if err := heatHold.release(); err != nil {
+				logrus.WithError(err).Error("release charge hold before shutdown")
+			}
+		}
 		if nativeThermal != nil {
 			nativeThermal.stopping = true
 			if err := nativeThermal.configure(false); err != nil {

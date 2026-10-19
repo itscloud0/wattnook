@@ -17,7 +17,7 @@ func detectCapabilities() compatibility.Capabilities {
 	if mode == compatibility.ChargeControlUnsupported && nativeCharge != nil {
 		if state, err := nativeCharge.Read(); err == nil {
 			return compatibility.Capabilities{ChargingControl: true, ChargeControlMode: compatibility.ChargeControlNative, SupportedLimits: state.Limits,
-				ThermalAdapter: smcConn.HasKey("CHIE")}
+				ThermalAdapter: smcConn.HasKey("CHIE"), ChargeHold: smcConn.HasKey("CHIE")}
 		}
 	}
 	legacy := mode == compatibility.ChargeControlLegacy
@@ -52,6 +52,7 @@ func capabilityLogFields(capabilities compatibility.Capabilities) logrus.Fields 
 		"magSafeLED":        capabilities.MagSafeLED,
 		"adapterControl":    capabilities.AdapterControl,
 		"calibration":       capabilities.Calibration,
+		"chargeHold":        capabilities.ChargeHold,
 	}
 }
 
@@ -86,6 +87,11 @@ func disableUnsupportedCalibrationState() {
 // hardware. It intentionally persists the disabled values.
 func disableUnsupportedConfiguredFeatures() {
 	changed := false
+	if conf.ThermalAdapterEnabled() && capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+		// Adapter disconnection is never a Heat Protection mechanism.
+		conf.SetThermalAdapterEnabled(false)
+		changed = true
+	}
 	if !capabilities.Supports(compatibility.FeatureHeatProtection) &&
 		(conf.HeatProtectionEnabled() || conf.ThermalAdapterEnabled()) {
 		conf.SetHeatProtection(false, conf.HeatPauseTemperatureCelsius(), conf.HeatResumeTemperatureCelsius())

@@ -9,6 +9,16 @@ func TestAdapterInhibitionIsNotChargeOnlyHeatProtection(t *testing.T) {
 			t.Fatalf("native adapter=%v advertised charge-only heat protection", adapter)
 		}
 	}
+	native := Capabilities{ChargingControl: true, ChargeControlMode: ChargeControlNative, ChargeHold: true}
+	if !native.Supports(FeatureHeatProtection) {
+		t.Fatal("verified native charge hold not advertised")
+	}
+	if (Capabilities{ChargeControlMode: ChargeControlNative, ChargeHold: true}).Supports(FeatureHeatProtection) {
+		t.Fatal("charge hold advertised without charging control")
+	}
+	if (Capabilities{ChargingControl: true, ChargeControlMode: ChargeControlLegacy, ChargeHold: true}).Supports(FeatureHeatProtection) != true {
+		t.Fatal("legacy heat protection changed")
+	}
 	if !Permissive().Supports(FeatureHeatProtection) {
 		t.Fatal("legacy charge-only heat protection was removed")
 	}

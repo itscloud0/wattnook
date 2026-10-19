@@ -63,9 +63,10 @@ func NewHeatProtectionCommand() *cobra.Command {
 		Short:   "Pause charging above your chosen battery temperature",
 		Long: `Heat protection pauses charging above a temperature threshold.
 
-It requires a verified battery-charge inhibition backend that retains adapter power.
-Custom heat protection is unavailable with Apple's native charge-limit backend;
-the former adapter-disconnection mode is not a substitute. Apple's charge limit stays active.
+The wall adapter keeps powering the Mac while charging is paused. On Macs that use
+Apple's native charge limit (macOS 27), WattNook holds charge at the current
+percentage through Apple's top-off protection and restores your Apple limit once
+the battery cools. Adapter disconnection is never used as a substitute.
 
 Charging resumes only after the battery cools below the resume temperature. This hysteresis prevents rapid on/off switching.`,
 	}

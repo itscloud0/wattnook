@@ -123,10 +123,10 @@ type adapterThermalController struct {
 
 var nativeThermal *adapterThermalController
 
-const nativeHeatUnavailable = "Charge-only Heat Protection is not verified on this Mac; adapter disconnection is not a substitute"
+const nativeHeatUnavailable = "Charge-only Heat Protection is not available on this Mac; adapter disconnection is not a substitute"
 
 func setNativeHeatProtection(c *gin.Context, request heatProtectionRequest) {
-	if request.Enabled {
+	if request.Enabled && (request.AdapterMode || heatHold == nil) {
 		c.AbortWithStatusJSON(http.StatusConflict, nativeHeatUnavailable)
 		return
 	}
@@ -134,13 +134,21 @@ func setNativeHeatProtection(c *gin.Context, request heatProtectionRequest) {
 	defer maintainLoopInnerLock.Unlock()
 	oldEnabled, oldAdapter := conf.HeatProtectionEnabled(), conf.ThermalAdapterEnabled()
 	oldPause, oldResume := conf.HeatPauseTemperatureCelsius(), conf.HeatResumeTemperatureCelsius()
+	pause, resume := oldPause, oldResume
+	if request.Enabled {
+		if err := validateHeatThresholds(request.PauseTemperatureCelsius, request.ResumeTemperatureCelsius); err != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
+			return
+		}
+		pause, resume = request.PauseTemperatureCelsius, request.ResumeTemperatureCelsius
+	}
 	var controlErr error
 	if nativeThermal != nil {
 		controlErr = nativeThermal.configure(false)
 	}
 	// Off is a recovery operation, not a temperature-setting operation. It
 	// must work even for old callers that omit the thresholds entirely.
-	conf.SetHeatProtection(false, oldPause, oldResume)
+	conf.SetHeatProtection(request.Enabled, pause, resume)
 	conf.SetThermalAdapterEnabled(false)
 	if err := conf.Save(); err != nil {
 		conf.SetHeatProtection(oldEnabled, oldPause, oldResume)
@@ -149,7 +157,12 @@ func setNativeHeatProtection(c *gin.Context, request heatProtectionRequest) {
 		return
 	}
 	if nativeThermal != nil {
-		nativeThermal.reconcile(false, oldPause, oldResume)
+		nativeThermal.reconcile(false, pause, resume)
+	}
+	if heatHold != nil {
+		// An explicit change re-arms a hold that stopped on a fault.
+		heatHold.reset()
+		heatHold.reconcile(request.Enabled, pause, resume)
 	} else {
 		clearHeatProtectionStatus()
 	}
@@ -162,7 +175,7 @@ func setNativeHeatProtection(c *gin.Context, request heatProtectionRequest) {
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, message)
 		return
 	}
-	c.IndentedJSON(http.StatusCreated, "Heat Protection updated; Apple charge limit preserved")
+	c.IndentedJSON(http.StatusCreated, "Heat Protection updated")
 }
 
 func newAdapterThermalController(statePath string) *adapterThermalController {
