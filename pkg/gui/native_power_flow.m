@@ -378,14 +378,17 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
 
     Text(chargeText, NSMakeRect(24, 158, 145, 60), 48, NSFontWeightSemibold,
          NSColor.labelColor, NSTextAlignmentLeft);
+    // Orange marks the heat pause on the state line only; temperatures stay
+    // neutral unless the CPU itself runs hot.
     Text(state, NSMakeRect(24, 140, 250, 18), 13, NSFontWeightRegular,
-         NSColor.secondaryLabelColor, NSTextAlignmentLeft);
+         self.heatPaused && self.pluggedIn ? NSColor.systemOrangeColor : NSColor.secondaryLabelColor,
+         NSTextAlignmentLeft);
     // Battery and processor temperatures side by side: Heat Protection acts
     // on the battery, while a hot fanless Mac is usually the processor.
     NSColor *headerMuted = NSColor.secondaryLabelColor;
     BOOL showCPU = self.processorTemperatureCelsius > 0;
     if (self.temperatureCelsius > 0) {
-        NSColor *color = self.heatPaused && self.pluggedIn ? NSColor.systemOrangeColor : NSColor.labelColor;
+        NSColor *color = NSColor.labelColor;
         TemperatureLine(@"Battery", self.temperatureCelsius, color,
             NSMakeRect(right - 150, showCPU ? 186 : 174, 146, 20), headerMuted);
     }

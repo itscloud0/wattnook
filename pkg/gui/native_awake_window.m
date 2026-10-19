@@ -3,8 +3,12 @@
 @interface WattAwakeBackgroundView : NSView @end
 @implementation WattAwakeBackgroundView
 - (BOOL)isOpaque { return YES; }
+// Same graphite surface as the popover, so details feel like the same app.
 - (void)drawRect:(NSRect)dirtyRect {
-    [NSColor.windowBackgroundColor setFill]; NSRectFill(dirtyRect);
+    (void)dirtyRect;
+    NSGradient *surface = [[[NSGradient alloc] initWithStartingColor:WattSurfaceColor(YES)
+        endingColor:WattSurfaceColor(NO)] autorelease];
+    [surface drawInRect:self.bounds angle:90];
 }
 @end
 
@@ -54,16 +58,19 @@ static NSString *WattAwakeTimestamp(NSDate *date) {
 @implementation WattAwakeWindowController
 
 - (instancetype)initWithOwner:(BattMenuController *)owner {
-    NSPanel *panel = [[[WattAwakePanel alloc] initWithContentRect:NSMakeRect(0,0,520,520)
+    NSPanel *panel = [[[WattAwakePanel alloc] initWithContentRect:NSMakeRect(0,0,460,420)
                                                  styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-                                                           NSWindowStyleMaskResizable
+                                                           NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView
                                                    backing:NSBackingStoreBuffered defer:NO] autorelease];
     if (!(self = [super initWithWindow:panel])) return nil;
     _awakeOwner = owner;
     panel.title = @"Keep Awake details";
     panel.level = NSNormalWindowLevel;
     panel.hidesOnDeactivate = NO;
-    panel.minSize = NSMakeSize(480,440);
+    panel.minSize = NSMakeSize(420,400);
+    panel.titlebarAppearsTransparent = YES;
+    panel.titleVisibility = NSWindowTitleHidden;
+    panel.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     panel.delegate = self;
     panel.releasedWhenClosed = NO;
     panel.contentView = [[[WattAwakeBackgroundView alloc] initWithFrame:panel.contentView.bounds] autorelease];
@@ -89,13 +96,13 @@ static NSString *WattAwakeTimestamp(NSDate *date) {
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     [content addSubview:stack];
     [NSLayoutConstraint activateConstraints:@[
-        [stack.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:20],
-        [stack.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-20],
-        [stack.topAnchor constraintEqualToAnchor:content.topAnchor constant:20],
+        [stack.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:24],
+        [stack.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-24],
+        [stack.topAnchor constraintEqualToAnchor:content.topAnchor constant:40],
         [stack.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-20],
     ]];
 
-    NSTextField *title = WattAwakeLabel(@"Keep Awake", [NSFont systemFontOfSize:20 weight:NSFontWeightSemibold], NSColor.labelColor);
+    NSTextField *title = WattAwakeLabel(@"Keep Awake", [NSFont systemFontOfSize:17 weight:NSFontWeightSemibold], NSColor.labelColor);
     [stack addArrangedSubview:title];
     NSArray *names = @[@"Sleep prevention", @"Closed-lid display", @"Remote access"];
     NSArray *identifiers = @[@"awake.sleep", @"awake.lid", @"awake.remote"];
@@ -122,21 +129,24 @@ static NSString *WattAwakeTimestamp(NSDate *date) {
     limit.identifier = @"awake.limitation";
     [stack addArrangedSubview:limit];
 
-    NSTextField *heading = WattAwakeLabel(@"Sleep blockers", [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold], NSColor.labelColor);
+    NSTextField *heading = WattAwakeLabel(@"Sleep blockers", [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold], NSColor.labelColor);
     [stack addArrangedSubview:heading];
     _snapshotValue = [WattAwakeLabel(@"Snapshot: not yet collected", [NSFont systemFontOfSize:11], NSColor.secondaryLabelColor) retain];
     _snapshotValue.identifier = @"awake.snapshot";
     [stack addArrangedSubview:_snapshotValue];
 
     NSScrollView *scroll = [[[NSScrollView alloc] initWithFrame:NSZeroRect] autorelease];
-    scroll.hasVerticalScroller = YES; scroll.borderType = NSBezelBorder;
+    scroll.hasVerticalScroller = YES; scroll.autohidesScrollers = YES; scroll.borderType = NSNoBorder;
+    scroll.drawsBackground = NO; scroll.wantsLayer = YES; scroll.layer.cornerRadius = 10;
+    scroll.layer.backgroundColor = [NSColor.whiteColor colorWithAlphaComponent:0.045].CGColor;
     scroll.identifier = @"awake.reportScroll";
     scroll.translatesAutoresizingMaskIntoConstraints = NO;
     _reportView = [[NSTextView alloc] initWithFrame:NSZeroRect];
     _reportView.editable = NO; _reportView.selectable = YES;
     _reportView.identifier = @"awake.report";
     _reportView.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
-    _reportView.textColor = NSColor.labelColor; _reportView.backgroundColor = NSColor.textBackgroundColor;
+    _reportView.textColor = NSColor.labelColor; _reportView.drawsBackground = NO;
+    _reportView.textContainerInset = NSMakeSize(10,10);
     _reportView.textContainer.widthTracksTextView = YES;
     _reportView.verticallyResizable = YES;
     _reportView.horizontallyResizable = NO;
@@ -145,18 +155,28 @@ static NSString *WattAwakeTimestamp(NSDate *date) {
     _reportView.autoresizingMask = NSViewWidthSizable;
     scroll.documentView = _reportView;
     [stack addArrangedSubview:scroll];
-    [scroll.heightAnchor constraintGreaterThanOrEqualToConstant:130].active = YES;
+    [scroll.heightAnchor constraintGreaterThanOrEqualToConstant:100].active = YES;
     [scroll setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationVertical];
     [scroll setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationVertical];
 
     NSStackView *buttons = [[[NSStackView alloc] initWithFrame:NSZeroRect] autorelease];
     buttons.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     buttons.distribution = NSStackViewDistributionGravityAreas;
-    _refreshButton = [[NSButton buttonWithTitle:@"Refresh" target:self action:@selector(refresh:)] retain];
+    // Dashboard buttons, not stock bezels.
+    _refreshButton = [WattActionButton(content,NSZeroRect,@"Refresh",@"arrow.clockwise",self,@selector(refresh:)) retain];
+    [_refreshButton removeFromSuperview];
     _refreshButton.keyEquivalent = @"r"; _refreshButton.keyEquivalentModifierMask = NSEventModifierFlagCommand;
-    _reportCopyButton = [[NSButton buttonWithTitle:@"Copy report" target:self action:@selector(copy:)] retain];
+    _reportCopyButton = [WattActionButton(content,NSZeroRect,@"Copy report",@"doc.on.doc",self,@selector(copy:)) retain];
+    [_reportCopyButton removeFromSuperview];
     _reportCopyButton.keyEquivalent = @"c"; _reportCopyButton.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
-    NSButton *close = [NSButton buttonWithTitle:@"Close" target:self action:@selector(close:)];
+    NSButton *close = WattActionButton(content,NSZeroRect,@"Close",@"",self,@selector(close:));
+    [close removeFromSuperview];
+    close.keyEquivalent = @"\r";
+    for (NSButton *button in @[_refreshButton,_reportCopyButton,close]) {
+        button.translatesAutoresizingMaskIntoConstraints = NO;
+        [button.heightAnchor constraintEqualToConstant:30].active = YES;
+        [button.widthAnchor constraintEqualToConstant:button == close ? 90 : 132].active = YES;
+    }
     [buttons addView:_refreshButton inGravity:NSStackViewGravityLeading];
     [buttons addView:_reportCopyButton inGravity:NSStackViewGravityLeading];
     [buttons addView:close inGravity:NSStackViewGravityTrailing];

@@ -11,6 +11,7 @@ import "C"
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"runtime/cgo"
 	"unsafe"
 
@@ -245,7 +246,25 @@ func terminateNativeApp() {
 	C.batt_app_terminate()
 }
 
+var daemonStatusPrefix = regexp.MustCompile(`got \d{3}: (.*)$`)
+
+// alertText removes the HTTP status prefix the client adds and unquotes the
+// daemon's JSON string, so alerts read as plain sentences.
+func alertText(body string) string {
+	match := daemonStatusPrefix.FindStringSubmatchIndex(body)
+	if match == nil {
+		return body
+	}
+	message := body[match[2]:match[3]]
+	var decoded string
+	if err := json.Unmarshal([]byte(message), &decoded); err == nil {
+		message = decoded
+	}
+	return body[:match[0]] + message
+}
+
 func showAlert(message, body string) {
+	body = alertText(body)
 	withTwoCStrings(message, body, func(cMessage, cBody *C.char) {
 		C.batt_show_alert(cMessage, cBody)
 	})

@@ -75,7 +75,7 @@ int main(void) {
         Check(controller.awakeDetailsWindow == first && controller.refreshes == 1, "second opening reuses window without request");
         NSView *content = first.window.contentView;
         [content layoutSubtreeIfNeeded];
-        Check(first.window.minSize.width == 480 && first.window.minSize.height == 440 && first.window.level == NSNormalWindowLevel,
+        Check(first.window.minSize.width == 420 && first.window.minSize.height == 400 && first.window.level == NSNormalWindowLevel,
               "normal resizable window has minimum size");
         Check(Find(content,@"awake.sleep") && Find(content,@"awake.lid") && Find(content,@"awake.remote"), "structured rows exist");
         Check(((first.window.styleMask & NSWindowStyleMaskResizable) != 0) && FitsVertically((NSStackView *)content.subviews.firstObject),

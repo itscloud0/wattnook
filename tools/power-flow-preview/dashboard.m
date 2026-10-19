@@ -277,11 +277,12 @@ int main(int argc, const char *argv[]) {
         BattBuildPopover(c);
         NSView *view = c.popover.contentViewController.view;
         // The approved full redesign gives both destinations equal, usable lanes.
-        assert(NSWidth(view.bounds) == 400 && NSHeight(view.bounds) == 532);
+        assert(NSWidth(view.bounds) == 400 && NSHeight(view.bounds) == 390);
         assert(NSHeight(c.powerFlowView.frame) == 220);
         assert(NSEqualRects(c.powerFlowView.frame,NSMakeRect(0,214,400,220)));
         assert(NSMaxY(FindButton(view,@"History ›").frame) + 6 <= 446);
-        assert(NSMaxY(FindButton(view,@"‹ System").frame) + 6 <= 446);
+        NSButton *historyBack = FindButton([view valueForKey:@"_historyPage"],@"System");
+        assert(historyBack && NSMaxY(historyBack.frame) + 6 <= 446 && historyBack.image != nil);
         assert(NSWidth(FindButton(view,@"Battery").frame) >= 112);
         assert(NSWidth(FindButton(view,@"System").frame) >= 112);
         assert(FindButton(view,@"Storage") != nil);
@@ -382,7 +383,7 @@ int main(int argc, const char *argv[]) {
         heatFixture.hidden = NO;
         c.powerFlowView.supportedLimits = nil;
         BattRefreshPopover(c,63,81);
-        assert(c.heatButton.enabled && [c.heatButton.accessibilityLabel isEqual:@"Heat protection. Temperature control"]);
+        assert(c.heatButton.enabled && [c.heatButton.accessibilityLabel isEqual:@"Heat protection. Checking…"]);
         assert(!c.heatButton.hidden && heatNotice.hidden);
         assert(NSMinX(c.darkButton.frame) == 204 && NSMaxX(c.darkButton.frame) == 376);
         assert(NSWidth(c.heatButton.frame) == NSWidth(c.darkButton.frame) && NSMinX(c.heatButton.frame) == 24);
@@ -427,9 +428,9 @@ int main(int argc, const char *argv[]) {
         c.powerFlowView.supportedLimits = nil;
         c.powerFlowView.limitPercent = 80;
         c.powerFlowView.limitPercent = 20;
-        assert([view hitTest:NSMakePoint(84,308)] == c.powerFlowView);
+        assert([view hitTest:NSMakePoint(84,308-(532-NSHeight(view.bounds)))] == c.powerFlowView);
         c.powerFlowView.limitPercent = 80;
-        assert([view hitTest:NSMakePoint(276,308)] == c.powerFlowView);
+        assert([view hitTest:NSMakePoint(276,308-(532-NSHeight(view.bounds)))] == c.powerFlowView);
         [c refreshStatusImage];
         assert([c.statusItem.button.accessibilityLabel containsString:@"SSD space used 73%"]);
         CGFloat withoutPercent = c.statusItem.button.image.size.width;
@@ -448,7 +449,7 @@ int main(int argc, const char *argv[]) {
         assert(((NSTextField *)[view valueForKey:@"_swap"]).font.pointSize == 12);
         assert([((NSTextField *)[view valueForKey:@"_swap"]).stringValue isEqual:@"Swap 1.5 GB"]);
         for(NSUInteger i=0;i<3;i++) assert(fabs(NSMidX(((NSView *)contexts[i]).frame)-NSMidX(((NSView *)orderedDetails[i]).frame))<0.5);
-        assert([((NSTextField *)[view valueForKey:@"_availableSpace"]).stringValue isEqual:@"Free 135 GB"]);
+        assert([((NSTextField *)[view valueForKey:@"_availableSpace"]).stringValue isEqual:@""]);
         // Regress the actual NSRangeException: CPU's default NSButton tag was -1.
         [FindButton(view,@"Memory") performClick:nil];
         [FindButton(view,@"CPU") performClick:nil];
@@ -501,7 +502,7 @@ int main(int argc, const char *argv[]) {
         c.diskSpacePercent = 75;
         BattRefreshPopover(c,100,100);
         assert([((NSButton *)details[2]).title isEqual:@"3 TB"]);
-        assert([((NSTextField *)[view valueForKey:@"_availableSpace"]).stringValue isEqual:@"Free 1 TB"]);
+        assert([((NSTextField *)[view valueForKey:@"_availableSpace"]).stringValue isEqual:@""]);
         Capture(view,directory,@"system-terabytes");
         NSArray *originalApps = c.appStats;
         NSMutableDictionary *largeApp = [[c.appStats[0] mutableCopy] autorelease];

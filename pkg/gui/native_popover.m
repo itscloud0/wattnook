@@ -14,6 +14,9 @@ static NSTextField *Label(NSView *parent, NSRect frame, NSString *text,
     return label;
 }
 
+static const CGFloat WattFullPopoverHeight = 532;
+static const CGFloat WattBatteryPopoverHeight = 532 - 142;
+
 @interface WattButton : NSButton
 @property(nonatomic, assign) BOOL selected;
 @property(nonatomic, assign) BOOL plain;
@@ -144,6 +147,7 @@ NSString *WattCompactBytes(double bytes, BOOL binary) {
 - (NSView *)hitTest:(NSPoint)point { (void)point; return nil; }
 @end
 @implementation WattAppRow {
+    NSTrackingArea *_rowTracking;
     NSImageView *_icon;
     NSTextField *_name, *_amount, *_relative;
     WattButton *_quit;
@@ -166,10 +170,24 @@ NSString *WattCompactBytes(double bytes, BOOL binary) {
         _quit.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
         _quit.plain = YES;
         _quit.toolTip = @"Request a normal Quit after confirmation";
+        _quit.alphaValue = 0;
     }
     return self;
 }
-- (void)dealloc { [_sample release]; [super dealloc]; }
+- (void)dealloc { [_rowTracking release]; [_sample release]; [super dealloc]; }
+- (void)updateTrackingAreas {
+    if (_rowTracking) [self removeTrackingArea:_rowTracking];
+    [_rowTracking release];
+    _rowTracking = [[NSTrackingArea alloc] initWithRect:NSZeroRect
+        options:NSTrackingMouseEnteredAndExited | NSTrackingActiveAlways | NSTrackingInVisibleRect
+        owner:self userInfo:nil];
+    [self addTrackingArea:_rowTracking];
+    [super updateTrackingAreas];
+}
+// Quit is a destructive-ish action; show it for the row under the pointer
+// instead of repeating it on every line.
+- (void)mouseEntered:(NSEvent *)event { (void)event; _quit.animator.alphaValue = 1; }
+- (void)mouseExited:(NSEvent *)event { (void)event; _quit.animator.alphaValue = 0; }
 - (void)update:(NSDictionary *)sample metric:(NSInteger)metric {
     BOOL changed = ![sample[@"path"] isEqual:self.sample[@"path"]];
     self.sample = sample;
@@ -305,6 +323,7 @@ NSString *WattCompactBytes(double bytes, BOOL binary) {
             glass.cornerRadius = NSHeight(rect) / 2;
             [content addSubview:glass];
         }
+        container.autoresizingMask = NSViewMinYMargin;
         [parent addSubview:container positioned:NSWindowBelow relativeTo:buttons.firstObject];
         [_glassViews addObject:container];
         for (WattButton *button in buttons) button.onGlass = YES;
@@ -376,20 +395,15 @@ static void Redisplay(NSView *view) {
     c.darkButton = Button(_batteryPage, NSMakeRect(204, 158, 172, 44),
         @"Keep Awake", @"", c, @selector(toggleKeepAwakeFromPopover:));
     c.heatButton.font = c.darkButton.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
-    [self line:_batteryPage y:144];
-    WattButton *system = Button(_batteryPage, NSMakeRect(14, 120, 75, 22),
-        @"System ›", @"", self, @selector(system:)); system.plain = YES;
-    [self line:_batteryPage y:72];
+    // Battery ends at its controls; System and Storage are one tab away and
+    // are no longer echoed here. Summary values stay detached for the menu.
     for (NSInteger i = 0; i < 3; i++) {
         CGFloat column = 24+i*122;
-        WattButton *metric = Button(_batteryPage, NSMakeRect(column, 94, 108, 24),
+        WattButton *metric = Button(nil, NSMakeRect(column, 94, 108, 24),
             @"—", @"", self, @selector(metric:));
         metric.plain = YES; metric.tag = i;
         metric.font = [NSFont monospacedDigitSystemFontOfSize:16 weight:NSFontWeightSemibold];
         [_summary addObject:metric];
-        NSTextField *caption = Label(_batteryPage, NSMakeRect(column, 78, 108, 14),
-            @[@"CPU load", @"Memory used", @"Disk MB/s"][i], 10.5, NO);
-        caption.alignment = NSTextAlignmentCenter;
         WattButton *detail = Button(_systemPage, NSMakeRect(column, 358, 108, 36),
             @"—", @"", self, @selector(units:));
         detail.plain = YES; detail.tag = i;
@@ -401,13 +415,10 @@ static void Redisplay(NSView *view) {
         [_detailCaptions addObject:detailCaption];
         detail.toolTip = @"Change units";
     }
-    WattButton *storage = Button(_batteryPage,NSMakeRect(14,46,105,22),@"SSD storage ›",@"",self,@selector(storage:));
-    storage.plain = YES; storage.tag = 2;
-    _usedSpace = Label(_batteryPage,NSMakeRect(24,24,174,19),@"Used —",11,NO);
-    _freeSpace = Label(_batteryPage,NSMakeRect(204,24,172,19),@"Free —",11,NO);
-    _freeSpace.alignment = NSTextAlignmentRight;
+    _usedSpace = Label(nil,NSMakeRect(24,24,174,19),@"Used —",11,NO);
+    _freeSpace = Label(nil,NSMakeRect(204,24,172,19),@"Free —",11,NO);
     _storageBar = [[[WattStorageBar alloc] initWithFrame:NSMakeRect(24,14,352,4)] autorelease];
-    _storageBar.fraction = -1; [_batteryPage addSubview:_storageBar];
+    _storageBar.fraction = -1;
     _swap = Label(_systemPage, NSMakeRect(146,334,108,20), @"Swap —", 12, NO);
     _pressure = Label(_systemPage,NSMakeRect(24,419,260,18),@"Memory pressure: —",11,NO);
     _pressure.toolTip = @"macOS memory pressure, separate from the percentage of RAM used";
@@ -436,26 +447,27 @@ static void Redisplay(NSView *view) {
         [_systemPage addSubview:row]; row.controller = c; [_rows addObject:row];
     }
     _empty = Label(_systemPage, NSMakeRect(24, 181, 352, 32), @"Collecting app samples…", 12, NO);
-    WattButton *activity = Button(_systemPage, NSMakeRect(24, 24, 352, 28),
+    WattButton *activity = Button(_systemPage, NSMakeRect(24, 14, 352, 28),
         @"Open Activity Monitor ↗", @"waveform.path.ecg", self, @selector(activity:)); activity.plain = YES;
     _footer = Label(_systemPage, NSMakeRect(24, 4, 352, 16), @"", 10, NO);
     _footer.alignment = NSTextAlignmentCenter;
-    WattButton *back = Button(_historyPage,NSMakeRect(20,409,128,29),@"‹ System",@"",self,@selector(system:)); back.plain = YES;
-    Label(_historyPage,NSMakeRect(270,416,106,18),@"Last 15 minutes",11,NO);
+    WattButton *back = Button(_historyPage,NSMakeRect(14,408,100,30),@"System",@"chevron.left",self,@selector(system:)); back.plain = YES;
+    NSTextField *window = Label(_historyPage,NSMakeRect(226,414,150,18),@"Last 15 minutes",11,NO);
+    window.alignment = NSTextAlignmentRight;
     _historyChart = [[[WattHistoryView alloc] initWithFrame:NSMakeRect(24,40,352,360)] autorelease];
     [_historyPage addSubview:_historyChart];
     Label(_historyPage,NSMakeRect(24,12,352,18),@"10-second samples · kept in memory only",11,NO);
-    Label(_settingsPage,NSMakeRect(24,408,352,24),@"Appearance",16,YES);
+    Label(_settingsPage,NSMakeRect(24,410,352,20),@"Appearance",13,YES);
     Label(_settingsPage,NSMakeRect(24,382,352,18),@"Palette",12,NO);
     NSArray *palettes = @[@"Blue",@"Mint",@"Violet",@"Amber",@"Glass"];
     for (NSInteger i=0;i<palettes.count;i++) {
         WattButton *palette = Button(_settingsPage,NSMakeRect(24+i*72,344,64,30),
             palettes[i],@"",self,@selector(palette:));
-        palette.tag = i; [_paletteButtons addObject:palette];
+        palette.tag = i; palette.grouped = YES; [_paletteButtons addObject:palette];
         palette.hidden = [palettes[i] isEqual:@"Glass"] && !WattGlassAvailable();
     }
     [self line:_settingsPage y:326];
-    Label(_settingsPage,NSMakeRect(24,294,352,24),@"Menu bar",16,YES);
+    Label(_settingsPage,NSMakeRect(24,296,352,20),@"Menu bar",13,YES);
     NSArray *titles = @[@"CPU load",@"Memory used",@"SSD used",@"Battery percentage",@"Battery icon"];
     for (NSInteger i=0;i<titles.count;i++) {
         NSButton *check = [NSButton checkboxWithTitle:titles[i] target:self action:@selector(menuMetric:)];
@@ -480,6 +492,8 @@ static void Redisplay(NSView *view) {
     awakeDetails.toolTip = @"Sleep prevention, closed-lid display and apps keeping your Mac awake";
     Button(_settingsPage,NSMakeRect(24,12,352,30),@"Advanced controls…",@"slider.horizontal.3",
         c,@selector(showMoreMenu:));
+    // Pin everything to the top edge so the popover can be shorter on Battery.
+    for (NSView *view in self.subviews) view.autoresizingMask = NSViewMinYMargin;
     [self applyTheme];
 }
 - (void)battery:(id)sender { (void)sender; _system = NO; _storage = NO; _settings = NO; _history = NO; [self selectPage]; }
@@ -528,6 +542,14 @@ static void Redisplay(NSView *view) {
     _batteryTab.selected = !_system && !_storage && !_settings; _systemTab.selected = _system && !_settings;
     _storageTab.selected = _storage && !_settings;
     self.controller.powerFlowView.flowAnimationEnabled = !_system && !_storage && !_settings && self.window.visible;
+    // Battery stops at its action row (y 158 within a 450 pt page); trim the
+    // unused band below it instead of leaving empty space.
+    BOOL battery = !_system && !_storage && !_settings;
+    NSSize size = NSMakeSize(400, battery ? WattBatteryPopoverHeight : WattFullPopoverHeight);
+    if (!NSEqualSizes(self.frame.size, size)) {
+        [self setFrameSize:size];
+        self.controller.popover.contentSize = size;
+    }
     [self refreshCPU:_cpu memory:_memory];
 }
 - (void)metric:(NSButton *)sender {
@@ -607,10 +629,12 @@ static void Redisplay(NSView *view) {
         ((NSButton *)_summary[i]).accessibilityLabel = description;
     }
     _swap.stringValue = [@"Swap " stringByAppendingString:WattCompactBytes(c.swapUsedBytes,YES)];
-    _processCount.stringValue = monitoring && c.previousProcessCPU ?
-        [NSString stringWithFormat:@"%lu processes",(unsigned long)c.previousProcessCPU.count] : @"Processes —";
-    _availableSpace.stringValue = [@"Free " stringByAppendingString:
-        WattCompactBytes(c.diskTotalBytes ? (double)MIN(c.diskFreeBytes,c.diskTotalBytes) : -1,NO)];
+    double socTemperature = c.powerFlowView.processorTemperatureCelsius;
+    _processCount.stringValue = socTemperature > 0 ? [NSString stringWithFormat:@"%.0f°C",socTemperature] : @"";
+    _processCount.textColor = socTemperature >= 85 ? NSColor.systemOrangeColor : NSColor.secondaryLabelColor;
+    _processCount.toolTip = @"Hottest CPU/GPU die sensor";
+    // Free space is Storage's job; throughput needs no second number here.
+    _availableSpace.stringValue = @"";
     for (NSTextField *field in @[_processCount,_swap,_availableSpace]) {
         CGFloat size = 12;
         field.font = [NSFont systemFontOfSize:size];
@@ -621,7 +645,7 @@ static void Redisplay(NSView *view) {
     _limitLabel.stringValue = c.powerFlowView.displayedLimitPercent < 0 ? @"Limit unavailable" :
         [NSString stringWithFormat:@"%@ %ld%%", c.powerFlowView.supportedLimits.count ? @"Charge limit" : @"Limit", (long)c.powerFlowView.displayedLimitPercent];
     c.heatButton.title = [c item:BattItemHeatProtection].hidden ? @"Heat unavailable" : @"Heat protection";
-    ((WattButton *)c.heatButton).subtitle = [c item:BattItemHeatProtection].hidden ? @"Native limit only" : c.heatDetail ?: @"Temperature control";
+    ((WattButton *)c.heatButton).subtitle = [c item:BattItemHeatProtection].hidden ? @"Native limit only" : c.heatDetail ?: @"Checking…";
     c.heatButton.accessibilityLabel = [NSString stringWithFormat:@"%@. %@",c.heatButton.title,((WattButton *)c.heatButton).subtitle];
     ((WattButton *)c.darkButton).subtitle = c.keepAwakeStatus == nil ? @"Status unavailable" : @"Prevent system sleep";
     c.heatButton.toolTip = [c item:BattItemHeatProtection].title;
@@ -662,9 +686,8 @@ static void Redisplay(NSView *view) {
         [(WattAppRow *)_rows[i] update:i < apps.count ? apps[i] : nil metric:_sortMetric];
     _empty.stringValue = monitoring ? @"Collecting app samples…" : @"Enable System monitoring in Settings.";
     _empty.hidden = apps.count > 0;
-    _footer.stringValue = c.powerFlowView.chargePercent < 0 ? @"Battery unavailable" :
-        [NSString stringWithFormat:@"Battery %ld%% · %@ · %.1f°C",(long)c.powerFlowView.chargePercent,
-            c.powerFlowView.pluggedIn ? @"Plugged in" : @"On battery",c.powerFlowView.temperatureCelsius];
+    _footer.stringValue = @"";
+    _footer.hidden = YES; // Battery state lives on Battery.
     [c.powerFlowView setNeedsDisplay:YES];
     NSString *palette = [NSUserDefaults.standardUserDefaults stringForKey:@"WattNookPalette"] ?: @"Blue";
     for (WattButton *button in _paletteButtons) button.selected = [button.title isEqual:palette];
@@ -695,6 +718,7 @@ void BattBuildPopover(BattMenuController *controller) {
     content.controller = controller;
     content.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
     [content build];
+    [content setFrameSize:NSMakeSize(400, WattBatteryPopoverHeight)]; // Battery opens first.
     NSViewController *viewController = [[[NSViewController alloc] init] autorelease];
     viewController.view = content;
     controller.popover = [[[NSPopover alloc] init] autorelease];

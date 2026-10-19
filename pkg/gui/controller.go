@@ -375,13 +375,14 @@ func heatProtectionPresentation(enabled bool, status *client.HeatProtectionStatu
 		if status.Mechanism == "adapter" {
 			return "Heat Protection: off — uses battery while hot; Apple limit stays active", "Off · temperature control"
 		}
-		return "Heat Protection: off", "Off · temperature control"
+		return "Heat Protection: off", "Off"
 	}
 	if status.Paused {
 		if status.Mechanism == "adapter" {
 			return "Heat Protection: cooling — running on battery", "Cooling · battery power"
 		}
-		return "Heat Protection: charging paused", "Cooling · charge paused"
+		// Name the state and the exit condition, not the feature.
+		return "Heat Protection: charging paused", fmt.Sprintf("Paused · resumes at %.0f°", status.ResumeTemperatureCelsius)
 	}
 	if status.ReserveBlocked {
 		return "Heat Protection: low battery — adapter restored; re-arms above 25%", "Low battery · AC restored"
@@ -390,7 +391,10 @@ func heatProtectionPresentation(enabled bool, status *client.HeatProtectionStatu
 	if status.Mechanism == "adapter" {
 		title += " — uses battery while hot"
 	}
-	return title, fmt.Sprintf("On · %.0f° / %.0f°", status.PauseTemperatureCelsius, status.ResumeTemperatureCelsius)
+	if status.Mechanism == "adapter" {
+		return title, fmt.Sprintf("On · %.0f° / %.0f°", status.PauseTemperatureCelsius, status.ResumeTemperatureCelsius)
+	}
+	return title, fmt.Sprintf("Watching · pauses at %.0f°", status.PauseTemperatureCelsius)
 }
 
 func (c *menuController) updateCalibration(status *calibration.Status) {

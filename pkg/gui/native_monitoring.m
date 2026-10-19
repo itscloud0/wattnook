@@ -82,9 +82,20 @@ static NSString *ValueLabel(double value, NSInteger metric) {
     NSTimeInterval now = NSDate.timeIntervalSinceReferenceDate;
     WattMetricSample last = [self.history sampleAtIndex:self.history.count-1];
     NSArray *names = @[@"CPU load",@"Memory used",@"Mac power · estimate",@"Disk read + write"];
+    NSDictionary *tertiary = @{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:10 weight:NSFontWeightRegular],
+        NSForegroundColorAttributeName:NSColor.tertiaryLabelColor};
     for (NSInteger metric=0;metric<4;metric++) {
         CGFloat y = self.bounds.size.height-(metric+1)*80;
-        [names[metric] drawAtPoint:NSMakePoint(0,y+58) withAttributes:caption];
+        double peak = NAN;
+        for (NSUInteger i=0;i<self.history.count;i++) {
+            WattMetricSample sample = [self.history sampleAtIndex:i]; double value = Value(sample,metric);
+            if (sample.time >= now-900 && sample.time <= now && isfinite(value)) peak = isfinite(peak) ? MAX(peak,value) : value;
+        }
+        // Name, then the window's peak as the scale reference.
+        NSMutableAttributedString *title = [[[NSMutableAttributedString alloc] initWithString:names[metric] attributes:caption] autorelease];
+        if (isfinite(peak)) [title appendAttributedString:[[[NSAttributedString alloc]
+            initWithString:[@"   peak " stringByAppendingString:ValueLabel(peak,metric)] attributes:tertiary] autorelease]];
+        [title drawAtPoint:NSMakePoint(0,y+58)];
         NSString *label = ValueLabel(now >= last.time && now-last.time <= 30 ? Value(last,metric) : NAN,metric);
         NSDictionary *style = @{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium],
             NSForegroundColorAttributeName:NSColor.labelColor};
@@ -93,23 +104,42 @@ static NSString *ValueLabel(double value, NSInteger metric) {
         [[NSColor.separatorColor colorWithAlphaComponent:0.5] setStroke];
         NSBezierPath *baseline = [NSBezierPath bezierPath];
         [baseline moveToPoint:plot.origin]; [baseline lineToPoint:NSMakePoint(NSMaxX(plot),plot.origin.y)]; [baseline stroke];
+        // Faint top rule so the plot reads as a bounded scale, not a squiggle.
+        NSBezierPath *ceiling = [NSBezierPath bezierPath]; CGFloat dash[2] = {2,3};
+        [ceiling setLineDash:dash count:2 phase:0];
+        [ceiling moveToPoint:NSMakePoint(NSMinX(plot),NSMaxY(plot))]; [ceiling lineToPoint:NSMakePoint(NSMaxX(plot),NSMaxY(plot))];
+        [[NSColor.separatorColor colorWithAlphaComponent:0.25] setStroke]; [ceiling stroke];
         double maximum = metric < 2 ? 100 : 1;
         for (NSUInteger i=0;i<self.history.count;i++) {
             WattMetricSample sample = [self.history sampleAtIndex:i]; double value = Value(sample,metric);
             if (sample.time >= now-900 && sample.time <= now && isfinite(value)) maximum = MAX(maximum,value);
         }
         NSBezierPath *line = [NSBezierPath bezierPath]; line.lineWidth = 1.5;
-        BOOL connected = NO; double previousTime = 0;
+        NSBezierPath *area = [NSBezierPath bezierPath];
+        BOOL connected = NO; double previousTime = 0; NSPoint runStart = NSZeroPoint, runEnd = NSZeroPoint;
         for (NSUInteger i=0;i<self.history.count;i++) {
             WattMetricSample sample = [self.history sampleAtIndex:i]; double value = Value(sample,metric);
-            if (sample.time < now-900 || sample.time > now || !isfinite(value)) { connected = NO; continue; }
+            if (sample.time < now-900 || sample.time > now || !isfinite(value)) {
+                // Close the filled run at a gap so it never spans the hole.
+                if (connected) { [area lineToPoint:NSMakePoint(runEnd.x,plot.origin.y)]; [area lineToPoint:NSMakePoint(runStart.x,plot.origin.y)]; [area closePath]; }
+                connected = NO; continue;
+            }
             NSPoint point = NSMakePoint(plot.origin.x+plot.size.width*(sample.time-(now-900))/900,
                 plot.origin.y+plot.size.height*value/maximum);
-            if (connected && sample.time-previousTime <= 30) [line lineToPoint:point];
-            else [line moveToPoint:point];
-            connected = YES; previousTime = sample.time;
+            if (connected && sample.time-previousTime <= 30) { [line lineToPoint:point]; [area lineToPoint:point]; }
+            else {
+                if (connected) { [area lineToPoint:NSMakePoint(runEnd.x,plot.origin.y)]; [area lineToPoint:NSMakePoint(runStart.x,plot.origin.y)]; [area closePath]; }
+                [line moveToPoint:point]; [area moveToPoint:point]; runStart = point;
+            }
+            connected = YES; previousTime = sample.time; runEnd = point;
         }
+        if (connected) { [area lineToPoint:NSMakePoint(runEnd.x,plot.origin.y)]; [area lineToPoint:NSMakePoint(runStart.x,plot.origin.y)]; [area closePath]; }
+        [[WattAccentColor() colorWithAlphaComponent:0.14] setFill]; [area fill];
         [WattAccentColor() setStroke]; [line stroke];
     }
+    // One shared time axis under all four series.
+    NSString *start = @"15 min ago", *end = @"now";
+    [start drawAtPoint:NSMakePoint(0,6) withAttributes:tertiary];
+    [end drawAtPoint:NSMakePoint(NSWidth(self.bounds)-[end sizeWithAttributes:tertiary].width,6) withAttributes:tertiary];
 }
 @end
