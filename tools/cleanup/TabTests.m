@@ -29,10 +29,12 @@ int main(int argc,const char **argv){@autoreleasepool{
  NSView *v=c.storageView;
  NSTableView *table=[v valueForKey:@"table"];
  NSButton *scan=[v valueForKey:@"scanButton"];
- NSSegmentedControl *categories=[v valueForKey:@"categoryControl"];
+ NSButton *appsTab=[v valueForKey:@"applicationsTab"],*cachesTab=[v valueForKey:@"cachesTab"];
  assert([scan.title isEqual:@"Scan"]&&table.numberOfRows==0);
  assert(table.headerView==nil&&table.rowHeight==44);
- assert([[categories labelForSegment:0] isEqual:@"Applications"]&&[[categories labelForSegment:1] isEqual:@"App caches"]);
+ assert([appsTab.title isEqual:@"Applications"]&&[cachesTab.title isEqual:@"App caches"]);
+ assert(NSWidth(appsTab.frame)==NSWidth(cachesTab.frame)&&NSMinX(appsTab.frame)==24&&NSMaxX(cachesTab.frame)==376);
+ assert(FindButton(v,@"Review")==nil);
  NSString *directory=argc==2?[NSString stringWithUTF8String:argv[1]]:nil;
  NSWindow *host=[[[NSWindow alloc]initWithContentRect:dashboard.bounds styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO]autorelease];
  host.contentView=dashboard;[host orderFront:nil];[dashboard displayIfNeeded];Capture(dashboard,directory,@"initial.png");
@@ -52,14 +54,15 @@ int main(int argc,const char **argv){@autoreleasepool{
  assert(table.numberOfRows==1);
  search.stringValue=@"";[(id)v controlTextDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:search]];
  [table selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];
- NSButton *review=[v valueForKey:@"reviewButton"];assert(review.enabled);[review performClick:nil];
+ // A single click on a row opens its detail; there is no separate Review button.
+ assert(table.action==@selector(review:)&&table.target==v);[table sendAction:table.action to:table.target];
  NSView *detail=[v valueForKey:@"detailView"];assert(!detail.hidden);
  NSTextField *path=[v valueForKey:@"pathLabel"];assert(path.selectable&&[path.stringValue isEqual:identity[@"path"]]);
  assert(FindButton(detail,@"Show in Finder")!=nil&&FindButton(detail,@"Move to Trash")==nil);
  [dashboard displayIfNeeded];Capture(dashboard,directory,@"detail.png");
  [FindButton(detail,@"Back") performClick:nil];assert(detail.hidden&&table.selectedRow==-1);
- categories.selectedSegment=1;[categories sendAction:categories.action to:categories.target];assert(table.numberOfRows==1);
- [table selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];[review performClick:nil];
+ [cachesTab performClick:nil];assert(table.numberOfRows==1);
+ [table selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];[table sendAction:table.action to:table.target];
  assert([path.stringValue isEqual:@"/synthetic/Library/Caches/test.one"]);
  [dashboard displayIfNeeded];Capture(dashboard,directory,@"cache-detail.png");
  WattUpdateStorageReview(c,c.storageGeneration,@{@"state":@"error",@"reason":@"Permission denied"});

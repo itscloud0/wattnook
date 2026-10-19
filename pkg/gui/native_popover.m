@@ -190,9 +190,11 @@ NSString *WattCompactBytes(double bytes, BOOL binary) {
     _relative.stringValue = metric == 2 ? (diskValid ?
         [NSString stringWithFormat:@"Write %@/s",WattCompactBytes([sample[@"diskWrite"] doubleValue],NO)] : @"Sampling…") :
         metric == 1 ? (physical ? [NSString stringWithFormat:@"%.1f%% RAM",
-            100*[sample[@"memory"] doubleValue]/physical] : @"—") :
-        [NSString stringWithFormat:@"%.2f / %lu cores",[sample[@"cpu"] doubleValue]/100,
-            (unsigned long)NSProcessInfo.processInfo.processorCount];
+            100*[sample[@"memory"] doubleValue]/physical] : @"—") : @"";
+    // CPU has one value; center it instead of leaving an empty second line.
+    NSRect amountFrame = _amount.frame;
+    amountFrame.origin.y = metric == 0 ? 9.5 : 17;
+    _amount.frame = amountFrame;
     _amount.toolTip = metric == 2 ? @"Read/write throughput; includes helpers, all volumes. Not disk utilization percent." :
         metric == 1 ? @"Resident memory, including helper processes" :
         @"Percentage of total CPU capacity, on the same scale as CPU load; helpers included";
@@ -371,16 +373,11 @@ static void Redisplay(NSView *view) {
     [_batteryPage addSubview:_limitLabel];
     c.heatButton = Button(_batteryPage, NSMakeRect(24, 158, 172, 44),
         @"Heat protection", @"", c, @selector(showHeatOptions:));
-    c.darkButton = Button(_batteryPage, NSMakeRect(204, 158, 140, 44),
+    c.darkButton = Button(_batteryPage, NSMakeRect(204, 158, 172, 44),
         @"Keep Awake", @"", c, @selector(toggleKeepAwakeFromPopover:));
-    WattButton *awakeInfo = Button(_batteryPage, NSMakeRect(348, 158, 28, 44),
-        @"", @"info.circle", c, @selector(showKeepAwakeDiagnostics:));
-    awakeInfo.plain = YES;
-    awakeInfo.accessibilityLabel = @"Keep Awake details";
-    awakeInfo.toolTip = @"Sleep prevention, closed-lid display and apps keeping your Mac awake";
     c.heatButton.font = c.darkButton.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
     [self line:_batteryPage y:144];
-    WattButton *system = Button(_batteryPage, NSMakeRect(20, 120, 75, 22),
+    WattButton *system = Button(_batteryPage, NSMakeRect(14, 120, 75, 22),
         @"System ›", @"", self, @selector(system:)); system.plain = YES;
     [self line:_batteryPage y:72];
     for (NSInteger i = 0; i < 3; i++) {
@@ -404,7 +401,7 @@ static void Redisplay(NSView *view) {
         [_detailCaptions addObject:detailCaption];
         detail.toolTip = @"Change units";
     }
-    WattButton *storage = Button(_batteryPage,NSMakeRect(20,46,105,22),@"SSD storage ›",@"",self,@selector(storage:));
+    WattButton *storage = Button(_batteryPage,NSMakeRect(14,46,105,22),@"SSD storage ›",@"",self,@selector(storage:));
     storage.plain = YES; storage.tag = 2;
     _usedSpace = Label(_batteryPage,NSMakeRect(24,24,174,19),@"Used —",11,NO);
     _freeSpace = Label(_batteryPage,NSMakeRect(204,24,172,19),@"Free —",11,NO);
@@ -475,9 +472,12 @@ static void Redisplay(NSView *view) {
     _historyCheck.frame = NSMakeRect(24,100,352,24); [_settingsPage addSubview:_historyCheck];
     _historyCheck.toolTip = @"90 samples in memory. Off releases the history buffer; nothing is written to disk.";
     _heatNotice = Label(_settingsPage,NSMakeRect(24,80,352,16),
-        @"Heat protection unavailable · Apple limit mode",10.5,NO);
+        @"Heat protection unavailable on this Mac",10.5,NO);
     _heatNotice.hidden = YES;
-    _heatNotice.toolTip = @"Apple's native charge limit does not expose custom temperature-based charging control.";
+    _heatNotice.toolTip = @"This Mac exposes no charge-only control WattNook can use while staying on adapter power.";
+    WattButton *awakeDetails = Button(_settingsPage,NSMakeRect(24,48,352,30),@"Keep Awake details…",@"moon.zzz",
+        c,@selector(showKeepAwakeDiagnostics:));
+    awakeDetails.toolTip = @"Sleep prevention, closed-lid display and apps keeping your Mac awake";
     Button(_settingsPage,NSMakeRect(24,12,352,30),@"Advanced controls…",@"slider.horizontal.3",
         c,@selector(showMoreMenu:));
     [self applyTheme];
@@ -563,7 +563,9 @@ static void Redisplay(NSView *view) {
     _historyCheck.enabled = monitoring;
     _historyChart.history = c.metricHistory;
     if (!_historyPage.hidden) _historyChart.needsDisplay = YES;
-    _pressure.stringValue = monitoring ? [@"Memory pressure: " stringByAppendingString:WattMemoryPressureLabel(c.memoryPressure)] : @"System monitoring is off";
+    NSString *pressure = WattMemoryPressureLabel(c.memoryPressure);
+    _pressure.stringValue = monitoring ? [@"Memory pressure: " stringByAppendingString:pressure] : @"System monitoring is off";
+    _pressure.hidden = monitoring && [pressure isEqual:@"Unavailable"];
     _pressure.textColor = monitoring && (c.memoryPressure == DISPATCH_MEMORYPRESSURE_WARN || c.memoryPressure == DISPATCH_MEMORYPRESSURE_CRITICAL) ? NSColor.systemOrangeColor : NSColor.secondaryLabelColor;
     _pressure.toolTip = @"macOS memory pressure, separate from the percentage of RAM used";
     if (monitoring && c.memoryPressureSince > 0 && c.memoryPressure > DISPATCH_MEMORYPRESSURE_NORMAL)
@@ -617,25 +619,25 @@ static void Redisplay(NSView *view) {
         }
     }
     _limitLabel.stringValue = c.powerFlowView.displayedLimitPercent < 0 ? @"Limit unavailable" :
-        [NSString stringWithFormat:@"%@ %ld%%", c.powerFlowView.supportedLimits.count ? @"Apple limit" : @"Limit", (long)c.powerFlowView.displayedLimitPercent];
+        [NSString stringWithFormat:@"%@ %ld%%", c.powerFlowView.supportedLimits.count ? @"Charge limit" : @"Limit", (long)c.powerFlowView.displayedLimitPercent];
     c.heatButton.title = [c item:BattItemHeatProtection].hidden ? @"Heat unavailable" : @"Heat protection";
     ((WattButton *)c.heatButton).subtitle = [c item:BattItemHeatProtection].hidden ? @"Native limit only" : c.heatDetail ?: @"Temperature control";
     c.heatButton.accessibilityLabel = [NSString stringWithFormat:@"%@. %@",c.heatButton.title,((WattButton *)c.heatButton).subtitle];
-    ((WattButton *)c.darkButton).subtitle = @"Prevent system sleep";
+    ((WattButton *)c.darkButton).subtitle = c.keepAwakeStatus == nil ? @"Status unavailable" : @"Prevent system sleep";
     c.heatButton.toolTip = [c item:BattItemHeatProtection].title;
     BOOL awake = [c isKeepAwakeActive];
     BOOL awaitingStatus = c.keepAwakeTogglePending || (!c.keepAwakeStatus && c.keepAwakeStatusReading);
     c.darkButton.title = c.keepAwakeChanging ? @"Changing…" :
         awaitingStatus ? @"Checking…" :
-        c.keepAwakeStatus == nil ? @"Keep Awake · ?" : c.lidGuardError ? @"Keep Awake · !" : awake ? @"Keep Awake · On" : @"Keep Awake";
+        c.lidGuardError ? @"Keep Awake · Issue" : awake ? @"Keep Awake · On" : @"Keep Awake";
     c.darkButton.enabled = !c.keepAwakeChanging && !awaitingStatus;
-    c.darkButton.toolTip = awaitingStatus ? @"Reading macOS sleep setting…" : c.keepAwakeError ?: c.lidGuardError ?: @"Prevents system sleep. Remote access still requires a working connection. Use the info button for status and diagnostics.";
+    c.darkButton.toolTip = awaitingStatus ? @"Reading macOS sleep setting…" : c.keepAwakeError ?: c.lidGuardError ?: @"Prevents system sleep. Remote access still requires a working connection. Details are in Settings.";
     [c item:BattItemKeepAwake].enabled = c.darkButton.enabled;
     [c item:BattItemKeepAwake].title = c.keepAwakeStatus == nil ? @"Keep Awake: status unavailable" : awake ? @"Keep Awake: On — turn off" : @"Keep Awake: closed-lid work";
     c.darkButton.accessibilityLabel = c.darkButton.title;
     c.heatButton.enabled = ![c item:BattItemHeatProtection].hidden;
     BOOL heatUnavailable = !c.heatButton.enabled;
-    NSRect awakeFrame = NSMakeRect(heatUnavailable ? 24 : 204,158,heatUnavailable ? 320 : 140,44);
+    NSRect awakeFrame = NSMakeRect(heatUnavailable ? 24 : 204,158,heatUnavailable ? 352 : 172,44);
     BOOL actionsChanged = c.heatButton.hidden != heatUnavailable || !NSEqualRects(c.darkButton.frame,awakeFrame);
     c.heatButton.hidden = heatUnavailable;
     c.darkButton.frame = awakeFrame;
@@ -674,6 +676,20 @@ static void Redisplay(NSView *view) {
 }
 @end
 
+NSButton *WattActionButton(NSView *parent, NSRect frame, NSString *title, NSString *symbol, id target, SEL action) {
+    return Button(parent, frame, title, symbol, target, action);
+}
+void WattSetButtonSelected(NSButton *button, BOOL selected) {
+    if (![button isKindOfClass:WattButton.class]) return;
+    ((WattButton *)button).selected = selected; [button setNeedsDisplay:YES];
+}
+void WattSetButtonGrouped(NSButton *button, BOOL grouped) {
+    if ([button isKindOfClass:WattButton.class]) ((WattButton *)button).grouped = grouped;
+}
+void WattSetButtonPlain(NSButton *button, BOOL plain) {
+    if ([button isKindOfClass:WattButton.class]) ((WattButton *)button).plain = plain;
+}
+
 void BattBuildPopover(BattMenuController *controller) {
     WattDashboard *content = [[[WattDashboard alloc] initWithFrame:NSMakeRect(0,0,400,532)] autorelease];
     content.controller = controller;
@@ -686,6 +702,22 @@ void BattBuildPopover(BattMenuController *controller) {
     controller.popover.delegate = controller;
     controller.popover.contentSize = content.frame.size;
     controller.popover.contentViewController = viewController;
+}
+// NSPopover keeps its window and compositor buffers (tens of MB with Glass)
+// alive after closing. A fresh popover around the same content frees them
+// while the menu bar item stays idle; the content and its state are reused.
+void BattRecyclePopover(BattMenuController *controller) {
+    NSPopover *old = controller.popover;
+    if (old == nil || old.isShown) return;
+    NSViewController *viewController = [[old.contentViewController retain] autorelease];
+    old.delegate = nil;
+    old.contentViewController = nil;
+    NSPopover *popover = [[[NSPopover alloc] init] autorelease];
+    popover.behavior = NSPopoverBehaviorTransient;
+    popover.delegate = controller;
+    popover.contentSize = viewController.view.frame.size;
+    popover.contentViewController = viewController;
+    controller.popover = popover;
 }
 void BattRefreshPopover(BattMenuController *controller, double cpu, double memory) {
     WattDashboard *view = (WattDashboard *)controller.popover.contentViewController.view;

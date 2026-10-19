@@ -243,6 +243,8 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     WattSetStorageReviewActive(self,NO);
     self.previousProcessCPU = nil; self.previousProcessDisk = nil;
     _previousProcessSampleTime = 0;
+    // Recycle after AppKit finishes closing the current popover.
+    dispatch_async(dispatch_get_main_queue(), ^{ BattRecyclePopover(self); });
 }
 
 - (void)showMenu:(NSMenu *)menu fromButton:(NSButton *)button {

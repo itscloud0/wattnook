@@ -315,12 +315,12 @@ int main(int argc, const char *argv[]) {
             assert(NSWidth(sort.frame) >= 100 && NSHeight(sort.frame) >= 28);
         for (NSTextField *caption in [view valueForKey:@"_detailCaptions"])
             assert(caption.alignment == NSTextAlignmentCenter);
-        NSButton *awakeInfo = FindAccessibleButton(view,@"Keep Awake details");
-        if (!awakeInfo) { fprintf(stderr,"FAIL: Battery has a direct Keep Awake details button\n"); return 1; }
+        // Keep Awake diagnostics live in Settings; Battery keeps one aligned action pair.
+        NSButton *awakeInfo = FindButton(view,@"Keep Awake details…");
+        if (!awakeInfo) { fprintf(stderr,"FAIL: Settings has a Keep Awake details button\n"); return 1; }
         assert(awakeInfo.target == c && awakeInfo.action == @selector(showKeepAwakeDiagnostics:));
         assert(c.darkButton.action == @selector(toggleKeepAwakeFromPopover:));
-        assert(!NSIntersectsRect(awakeInfo.frame,c.darkButton.frame));
-        assert(NSMaxX(awakeInfo.frame) <= 380 && NSHeight(awakeInfo.frame) >= 24);
+        assert(!FindAccessibleButton(view,@"Keep Awake details"));
         NSWindow *window = [[NSWindow alloc] initWithContentRect:view.bounds
             styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
         window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
@@ -368,10 +368,9 @@ int main(int argc, const char *argv[]) {
         BattRefreshPopover(c,63,81);
         assert(!c.heatButton.enabled && [c.heatButton.title isEqual:@"Heat unavailable"]);
         assert(c.heatButton.hidden);
-        assert(NSMinX(c.darkButton.frame) == 24 && NSWidth(c.darkButton.frame) == 320);
-        assert(NSMaxX(c.darkButton.frame) + 4 <= NSMinX(awakeInfo.frame));
+        assert(NSMinX(c.darkButton.frame) == 24 && NSMaxX(c.darkButton.frame) == 376);
         NSTextField *heatNotice = [view valueForKey:@"_heatNotice"];
-        assert(!heatNotice.hidden && [heatNotice.stringValue containsString:@"Apple limit"]);
+        assert(!heatNotice.hidden && [heatNotice.stringValue containsString:@"unavailable"]);
         assert([heatNotice.stringValue sizeWithAttributes:@{NSFontAttributeName:heatNotice.font}].width <= NSWidth(heatNotice.frame));
         assert([c.heatButton.accessibilityLabel isEqual:@"Heat unavailable. Native limit only"]);
         assert([c.heatButton.toolTip containsString:@"unavailable"]);
@@ -385,7 +384,8 @@ int main(int argc, const char *argv[]) {
         BattRefreshPopover(c,63,81);
         assert(c.heatButton.enabled && [c.heatButton.accessibilityLabel isEqual:@"Heat protection. Temperature control"]);
         assert(!c.heatButton.hidden && heatNotice.hidden);
-        assert(NSMinX(c.darkButton.frame) == 204 && NSWidth(c.darkButton.frame) == 140);
+        assert(NSMinX(c.darkButton.frame) == 204 && NSMaxX(c.darkButton.frame) == 376);
+        assert(NSWidth(c.heatButton.frame) == NSWidth(c.darkButton.frame) && NSMinX(c.heatButton.frame) == 24);
         c.keepAwakeChanging = YES;
         BattRefreshPopover(c,63,81);
         assert([c.darkButton.title isEqual:@"Changing…"] && !c.darkButton.enabled);
@@ -396,7 +396,8 @@ int main(int argc, const char *argv[]) {
         assert([c.darkButton.title isEqual:@"Keep Awake"] && c.darkButton.enabled);
         c.keepAwakeStatus = nil;
         BattRefreshPopover(c,63,81);
-        assert([c.darkButton.title isEqual:@"Keep Awake · ?"]);
+        assert([c.darkButton.title isEqual:@"Keep Awake"]);
+        assert([[c.darkButton valueForKey:@"subtitle"] isEqual:@"Status unavailable"]);
         c.powerFlowView.limitEditable = YES;
         [c.powerFlowView keyDown:[NSEvent keyEventWithType:NSEventTypeKeyDown
             location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0 context:nil
@@ -471,8 +472,8 @@ int main(int argc, const char *argv[]) {
         NSView *busyRow = consumerRows[0];
         assert([((NSTextField *)[busyRow valueForKey:@"_amount"]).stringValue isEqual:
             WattCPUUsageLabel(234,NSProcessInfo.processInfo.processorCount)]);
-        assert(([((NSTextField *)[busyRow valueForKey:@"_relative"]).stringValue isEqual:
-            [NSString stringWithFormat:@"2.34 / %lu cores",(unsigned long)NSProcessInfo.processInfo.processorCount]]));
+        // CPU rows show one centered value; the core-equivalent line was noise.
+        assert([((NSTextField *)[busyRow valueForKey:@"_relative"]).stringValue isEqual:@""]);
         c.appStats = cpuApps; BattRefreshPopover(c,63,81);
         [FindButton(view,@"Memory") performClick:nil];
         Capture(view,directory,@"system-memory");
@@ -552,11 +553,11 @@ int main(int argc, const char *argv[]) {
                 NSView *actionGlass = nil;
                 for (NSView *container in [view valueForKey:@"_glassViews"])
                     if (container.superview == batteryPage) actionGlass = container;
-                assert(actionGlass && NSEqualRects(actionGlass.frame,NSMakeRect(24,158,320,44)));
+                assert(actionGlass && NSEqualRects(actionGlass.frame,NSMakeRect(24,158,352,44)));
                 NSView *glassContent = [actionGlass valueForKey:@"contentView"];
                 assert(glassContent.subviews.count == (unavailable.boolValue ? 1 : 2));
                 if (unavailable.boolValue)
-                    assert(NSEqualRects(((NSView *)glassContent.subviews.firstObject).frame,NSMakeRect(0,0,320,44)));
+                    assert(NSEqualRects(((NSView *)glassContent.subviews.firstObject).frame,NSMakeRect(0,0,352,44)));
                 assert(CountGlassViews(view) == 2);
             }
             [FindButton(view,@"System") performClick:nil];

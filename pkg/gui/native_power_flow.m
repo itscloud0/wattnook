@@ -144,6 +144,22 @@ static NSString *Watts(double watts) {
     return [NSString stringWithFormat:@"%.1f W", MAX(0, watts)];
 }
 
+// One caption style for every node: muted name, emphasized watts.
+static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment alignment, NSColor *muted) {
+    NSMutableAttributedString *text = [[[NSMutableAttributedString alloc] init] autorelease];
+    if (name.length) [text appendAttributedString:[[[NSAttributedString alloc] initWithString:[name stringByAppendingString:@"  "]
+        attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:11 weight:NSFontWeightMedium],
+                     NSForegroundColorAttributeName:muted}] autorelease]];
+    [text appendAttributedString:[[[NSAttributedString alloc] initWithString:Watts(watts)
+        attributes:@{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightSemibold],
+                     NSForegroundColorAttributeName:NSColor.labelColor}] autorelease]];
+    NSSize measured = text.size;
+    CGFloat x = NSMinX(rect);
+    if (alignment == NSTextAlignmentCenter) x = NSMidX(rect) - measured.width / 2;
+    if (alignment == NSTextAlignmentRight) x = NSMaxX(rect) - measured.width;
+    [text drawAtPoint:NSMakePoint(x, NSMidY(rect) - measured.height / 2)];
+}
+
 @implementation BattPowerFlowView {
     NSInteger _previewLimitPercent;
     BOOL _limitDragging;
@@ -409,14 +425,11 @@ static NSString *Watts(double watts) {
         FlowNode(@"powerplug.fill", NSMakeRect(20, 32, 34, 34), muted, dark);
         FlowNode(@"battery.100percent", NSMakeRect(width - 54, 53, 34, 34), muted, dark);
         FlowNode(@"laptopcomputer", NSMakeRect(width - 54, 11, 34, 34), muted, dark);
-        Text([NSString stringWithFormat:@"Battery %@", Watts(self.batteryWatts)],
-             NSMakeRect(120, 85, 160, 16), 11, NSFontWeightSemibold,
-             NSColor.labelColor, NSTextAlignmentRight);
-        Text([NSString stringWithFormat:@"Mac %@", Watts(self.systemWatts)],
-             NSMakeRect(120, 4, 160, 16), 11, NSFontWeightSemibold,
-             NSColor.labelColor, NSTextAlignmentRight);
-        Text(Watts(self.adapterWatts), NSMakeRect(12, 7, 95, 16), 11,
-             NSFontWeightSemibold, NSColor.labelColor, NSTextAlignmentLeft);
+        // Captions sit beside their own node: source under the plug,
+        // destinations right-aligned against their nodes, outside the strokes.
+        FlowLabel(@"Battery", self.batteryWatts, NSMakeRect(x0, 86, x1 - x0 - 8, 14), NSTextAlignmentRight, muted);
+        FlowLabel(@"Mac", self.systemWatts, NSMakeRect(x0, 0, x1 - x0 - 8, 14), NSTextAlignmentRight, muted);
+        FlowLabel(@"", self.adapterWatts, NSMakeRect(4, 12, 66, 16), NSTextAlignmentCenter, muted);
     } else if (hybrid) {
         CGFloat fromAdapter = FlowWidth(self.adapterWatts);
         CGFloat fromBattery = FlowWidth(-self.batteryWatts);
@@ -424,14 +437,9 @@ static NSString *Watts(double watts) {
         FlowNode(@"powerplug.fill", NSMakeRect(20, 53, 34, 34), muted, dark);
         FlowNode(@"battery.100percent", NSMakeRect(20, 11, 34, 34), muted, dark);
         FlowNode(@"laptopcomputer", NSMakeRect(width - 54, 32, 34, 34), muted, dark);
-        Text(Watts(self.adapterWatts),
-             NSMakeRect(60, 85, 130, 16), 11, NSFontWeightSemibold,
-             NSColor.labelColor, NSTextAlignmentLeft);
-        Text(Watts(-self.batteryWatts),
-             NSMakeRect(60, 4, 130, 16), 11, NSFontWeightSemibold,
-             NSColor.labelColor, NSTextAlignmentLeft);
-        Text(Watts(self.systemWatts), NSMakeRect(203, 4, 83, 16), 11,
-             NSFontWeightSemibold, NSColor.labelColor, NSTextAlignmentRight);
+        FlowLabel(@"Adapter", self.adapterWatts, NSMakeRect(x0 + 8, 86, 180, 14), NSTextAlignmentLeft, muted);
+        FlowLabel(@"Battery", -self.batteryWatts, NSMakeRect(x0 + 8, 0, 180, 14), NSTextAlignmentLeft, muted);
+        FlowLabel(@"", self.systemWatts, NSMakeRect(width - 70, 12, 66, 16), NSTextAlignmentCenter, muted);
     } else {
         BOOL fromBattery = !adapter;
         double watts = fromBattery ? -self.batteryWatts : self.adapterWatts;

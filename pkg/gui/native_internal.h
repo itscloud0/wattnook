@@ -186,6 +186,11 @@ void BattApplyBatterySnapshot(BattMenuController *controller, NSDictionary *batt
 BOOL WattGlassAvailable(void);
 BOOL WattGlassTheme(void);
 NSColor *WattAccentColor(void);
+NSButton *WattActionButton(NSView *parent, NSRect frame, NSString *title, NSString *symbol, id target, SEL action);
+void WattSetButtonSelected(NSButton *button, BOOL selected);
+void WattSetButtonPlain(NSButton *button, BOOL plain);
+void WattSetButtonGrouped(NSButton *button, BOOL grouped);
+void BattRecyclePopover(BattMenuController *controller);
 NSColor *WattSurfaceColor(BOOL lighter);
 NSArray *WattMenuMetrics(void);
 BOOL WattMenuBatteryIcon(void);

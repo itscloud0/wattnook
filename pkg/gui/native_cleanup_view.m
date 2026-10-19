@@ -6,9 +6,9 @@ static NSTextField *StorageLabel(NSView *parent,NSRect frame,NSString *text,CGFl
  label.textColor=prominent?NSColor.labelColor:NSColor.secondaryLabelColor;
  label.maximumNumberOfLines=2;[parent addSubview:label];return label;
 }
+// Storage uses the dashboard's own controls, not stock AppKit bezels.
 static NSButton *StorageButton(NSView *parent,NSRect frame,NSString *title,id target,SEL action) {
- NSButton *button=[NSButton buttonWithTitle:title target:target action:action];
- button.frame=frame;button.bezelStyle=NSBezelStyleRounded;[parent addSubview:button];return button;
+ return WattActionButton(parent,frame,title,@"",target,action);
 }
 static NSString *StorageSize(NSDictionary *observation) {
  if (![observation[@"complete"] boolValue]) return [observation[@"bytes"] doubleValue]>0?
@@ -22,8 +22,8 @@ static NSString *StorageSize(NSDictionary *observation) {
  BOOL _running,_active;
 }
 @property(nonatomic,retain) NSView *listView,*detailView;
-@property(nonatomic,retain) NSButton *scanButton,*reviewButton;
-@property(nonatomic,retain) NSSegmentedControl *categoryControl;
+@property(nonatomic,retain) NSButton *scanButton,*applicationsTab,*cachesTab;
+@property(nonatomic,assign) NSInteger selectedCategory;
 @property(nonatomic,retain) NSSearchField *searchField;
 @property(nonatomic,retain) NSTableView *table;
 @property(nonatomic,retain) NSTextField *statusLabel,*emptyLabel,*pathLabel,*detailTitle,*detailSize,*detailCopy,*detailReason;
@@ -40,39 +40,38 @@ static NSString *StorageSize(NSDictionary *observation) {
  if (!(self=[super initWithFrame:NSMakeRect(0,0,400,450)]))return nil;
  _owner=owner;
  self.listView=[[[NSView alloc]initWithFrame:self.bounds]autorelease];[self addSubview:_listView];
- self.categoryControl=[NSSegmentedControl segmentedControlWithLabels:@[@"Applications",@"App caches"] trackingMode:NSSegmentSwitchTrackingSelectOne target:self action:@selector(category:)];
- _categoryControl.frame=NSMakeRect(24,407,352,30);_categoryControl.selectedSegment=0;
- [_categoryControl setWidth:176 forSegment:0];[_categoryControl setWidth:176 forSegment:1];
- [_categoryControl setAccessibilityLabel:@"Storage category"];[_listView addSubview:_categoryControl];
- self.searchField=[[[NSSearchField alloc]initWithFrame:NSMakeRect(24,367,232,28)]autorelease];
+ // Same tab treatment as System's CPU / Memory / Disk sort.
+ self.applicationsTab=StorageButton(_listView,NSMakeRect(24,408,172,30),@"Applications",self,@selector(selectCategory:));
+ self.cachesTab=StorageButton(_listView,NSMakeRect(204,408,172,30),@"App caches",self,@selector(selectCategory:));
+ WattSetButtonGrouped(_applicationsTab,YES);WattSetButtonGrouped(_cachesTab,YES);
+ WattSetButtonSelected(_applicationsTab,YES);
+ self.searchField=[[[NSSearchField alloc]initWithFrame:NSMakeRect(24,368,264,28)]autorelease];
  _searchField.placeholderString=@"Search applications";_searchField.delegate=self;
  [_searchField setAccessibilityLabel:@"Search applications"];[_listView addSubview:_searchField];
- self.scanButton=StorageButton(_listView,NSMakeRect(272,365,104,32),@"Scan",self,@selector(scan:));
+ self.scanButton=StorageButton(_listView,NSMakeRect(296,367,80,30),@"Scan",self,@selector(scan:));
  [_scanButton setAccessibilityIdentifier:@"storage.scan"];
  self.statusLabel=StorageLabel(_listView,NSMakeRect(24,336,352,22),@"Scan when you need a storage overview.",12,NO);
  _statusLabel.maximumNumberOfLines=1;_statusLabel.lineBreakMode=NSLineBreakByTruncatingTail;
- NSScrollView *scroll=[[[NSScrollView alloc]initWithFrame:NSMakeRect(24,66,352,264)]autorelease];
+ NSScrollView *scroll=[[[NSScrollView alloc]initWithFrame:NSMakeRect(24,16,352,314)]autorelease];
  scroll.hasVerticalScroller=YES;scroll.autohidesScrollers=YES;scroll.drawsBackground=NO;scroll.borderType=NSNoBorder;
- self.table=[[[NSTableView alloc]initWithFrame:NSMakeRect(0,0,352,264)]autorelease];
+ self.table=[[[NSTableView alloc]initWithFrame:NSMakeRect(0,0,352,314)]autorelease];
  _table.delegate=self;_table.dataSource=self;_table.rowHeight=44;_table.headerView=nil;
- _table.backgroundColor=NSColor.clearColor;_table.intercellSpacing=NSMakeSize(0,0);
+ _table.backgroundColor=NSColor.clearColor;if(@available(macOS 11.0,*))_table.style=NSTableViewStylePlain;_table.intercellSpacing=NSMakeSize(0,0);
  _table.allowsMultipleSelection=NO;_table.allowsEmptySelection=YES;
  [_table setAccessibilityLabel:@"Applications and observed sizes"];
  NSTableColumn *column=[[[NSTableColumn alloc]initWithIdentifier:@"application"]autorelease];
  column.width=352;column.minWidth=330;[_table addTableColumn:column];
  _table.columnAutoresizingStyle=NSTableViewLastColumnOnlyAutoresizingStyle;
- _table.target=self;_table.doubleAction=@selector(review:);
+ _table.target=self;_table.action=@selector(review:);_table.selectionHighlightStyle=NSTableViewSelectionHighlightStyleNone;
  scroll.documentView=_table;[_listView addSubview:scroll];
  self.emptyLabel=StorageLabel(_listView,NSMakeRect(48,179,304,62),@"See your applications and their sizes.\nChoose Scan to get started.",13,NO);
  _emptyLabel.alignment=NSTextAlignmentCenter;_emptyLabel.maximumNumberOfLines=3;
- StorageLabel(_listView,NSMakeRect(24,23,226,30),@"Read-only · Removal unavailable",12,NO);
- self.reviewButton=StorageButton(_listView,NSMakeRect(272,22,104,32),@"Review",self,@selector(review:));
- _reviewButton.enabled=NO;
 
  self.detailView=[[[NSView alloc]initWithFrame:self.bounds]autorelease];_detailView.hidden=YES;[self addSubview:_detailView];
- StorageButton(_detailView,NSMakeRect(24,407,80,30),@"Back",self,@selector(back:));
+ NSButton *back=WattActionButton(_detailView,NSMakeRect(14,408,90,30),@"Back",@"chevron.left",self,@selector(back:));
+ WattSetButtonPlain(back,YES);
  self.detailIcon=[[[NSImageView alloc]initWithFrame:NSMakeRect(24,350,40,40)]autorelease];[_detailView addSubview:_detailIcon];
- self.detailTitle=StorageLabel(_detailView,NSMakeRect(80,348,296,42),@"",15,YES);
+ self.detailTitle=StorageLabel(_detailView,NSMakeRect(76,360,300,20),@"",15,YES);_detailTitle.maximumNumberOfLines=1;
  _detailTitle.lineBreakMode=NSLineBreakByTruncatingTail;
  self.detailSize=StorageLabel(_detailView,NSMakeRect(24,295,352,36),@"",24,YES);
  _detailSize.font=[NSFont monospacedDigitSystemFontOfSize:24 weight:NSFontWeightMedium];
@@ -81,11 +80,11 @@ static NSString *StorageSize(NSDictionary *observation) {
  self.pathLabel=StorageLabel(_detailView,NSMakeRect(24,126,352,60),@"",12,NO);
  _pathLabel.selectable=YES;_pathLabel.maximumNumberOfLines=3;_pathLabel.lineBreakMode=NSLineBreakByTruncatingMiddle;
  self.detailReason=StorageLabel(_detailView,NSMakeRect(24,62,352,52),@"",12,NO);_detailReason.maximumNumberOfLines=3;
- StorageButton(_detailView,NSMakeRect(232,18,144,32),@"Show in Finder",self,@selector(reveal:));
+ WattActionButton(_detailView,NSMakeRect(24,16,352,30),@"Show in Finder",@"folder",self,@selector(reveal:));
  return self;
 }
 - (void)dealloc {
- [_listView release];[_detailView release];[_scanButton release];[_reviewButton release];[_categoryControl release];
+ [_listView release];[_detailView release];[_scanButton release];[_applicationsTab release];[_cachesTab release];
  [_searchField release];[_table release];[_statusLabel release];[_emptyLabel release];[_pathLabel release];
  [_detailTitle release];[_detailSize release];[_detailCopy release];[_detailReason release];[_detailIcon release];
  [_applications release];[_caches release];[_rows release];[_selectedItem release];[super dealloc];
@@ -109,9 +108,14 @@ static NSString *StorageSize(NSDictionary *observation) {
  _emptyLabel.stringValue=@"Reading file metadata.\nLeaving Storage stops the scan.";
  battStorageAction(_owner.handle,_generation,1);
 }
+- (void)selectCategory:(id)sender {
+ _selectedCategory=sender==_cachesTab?1:0;
+ WattSetButtonSelected(_applicationsTab,_selectedCategory==0);WattSetButtonSelected(_cachesTab,_selectedCategory==1);
+ [self category:nil];
+}
 - (void)category:(id)sender {
  [self back:nil];
- NSArray *source=_categoryControl.selectedSegment==0?_applications:_caches;
+ NSArray *source=_selectedCategory==0?_applications:_caches;
  NSString *query=[_searchField.stringValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
  NSMutableArray *filtered=[NSMutableArray array];
  for(NSDictionary *item in source){
@@ -119,9 +123,8 @@ static NSString *StorageSize(NSDictionary *observation) {
   if(!query.length || [name rangeOfString:query options:NSCaseInsensitiveSearch|NSDiacriticInsensitiveSearch].location!=NSNotFound)[filtered addObject:item];
  }
  self.rows=filtered;[_table deselectAll:nil];[_table reloadData];_emptyLabel.hidden=_rows.count!=0;
- _reviewButton.enabled=NO;
  if(query.length)_emptyLabel.stringValue=@"No matching applications.\nTry another name.";
- else if(_applications.count)_emptyLabel.stringValue=_categoryControl.selectedSegment==0?@"No applications in this scan.":@"No verified application caches found.\nUnknown and system caches stay excluded.";
+ else if(_applications.count)_emptyLabel.stringValue=_selectedCategory==0?@"No applications in this scan.":@"No verified application caches found.\nUnknown and system caches stay excluded.";
 }
 - (void)controlTextDidChange:(NSNotification *)notification {[self category:nil];}
 - (void)update:(NSDictionary *)snapshot {
@@ -165,14 +168,25 @@ static NSString *StorageSize(NSDictionary *observation) {
  NSView *cell=[[[NSView alloc]initWithFrame:NSMakeRect(0,0,column.width,44)]autorelease];
  NSImageView *icon=[[[NSImageView alloc]initWithFrame:NSMakeRect(0,6,32,32)]autorelease];
  icon.image=[NSWorkspace.sharedWorkspace iconForFile:app[@"path"]];[cell addSubview:icon];
- NSTextField *name=StorageLabel(cell,NSMakeRect(44,12,column.width-154,22),app[@"name"],13,YES);
+ NSTextField *name=StorageLabel(cell,NSMakeRect(44,18,column.width-154,20),app[@"name"],13,YES);
+ name.font=[NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+ // Bar length is relative to the largest row, so sizes compare at a glance.
+ double largest=MAX(1,[_rows.firstObject[@"size"][@"bytes"] doubleValue]);
+ double fraction=MIN(1,[item[@"size"][@"bytes"] doubleValue]/largest);
+ CGFloat track=column.width-154;
+ NSView *rail=[[[NSView alloc]initWithFrame:NSMakeRect(46,10,track,3)]autorelease];
+ rail.wantsLayer=YES;rail.layer.cornerRadius=1.5;rail.layer.backgroundColor=[NSColor.labelColor colorWithAlphaComponent:0.10].CGColor;
+ [cell addSubview:rail];
+ if(fraction>0){
+  NSView *fill=[[[NSView alloc]initWithFrame:NSMakeRect(46,10,MAX(3,track*fraction),3)]autorelease];
+  fill.wantsLayer=YES;fill.layer.cornerRadius=1.5;fill.layer.backgroundColor=WattAccentColor().CGColor;[cell addSubview:fill];
+ }
  name.maximumNumberOfLines=1;name.lineBreakMode=NSLineBreakByTruncatingTail;name.toolTip=app[@"name"];
- NSTextField *size=StorageLabel(cell,NSMakeRect(column.width-106,12,102,22),StorageSize(item[@"size"]),12,NO);
+ NSTextField *size=StorageLabel(cell,NSMakeRect(column.width-106,14,102,18),StorageSize(item[@"size"]),12,NO);
  size.maximumNumberOfLines=1;size.alignment=NSTextAlignmentRight;size.font=[NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular];
  size.toolTip=[item[@"size"][@"complete"] boolValue]?@"Observed logical size, not guaranteed recoverable space.":@"Partial or unknown size. This item is review-only.";
  return cell;
 }
-- (void)tableViewSelectionDidChange:(NSNotification *)notice {_reviewButton.enabled=_table.selectedRow>=0&&!_running;}
 - (void)review:(id)sender {
  NSInteger index=_table.selectedRow;if(_running||index<0||index>=(NSInteger)_rows.count)return;
  self.selectedItem=_rows[index];NSDictionary *app=_selectedItem[@"app"];BOOL cache=[_selectedItem[@"cache"] boolValue];
@@ -182,15 +196,14 @@ static NSString *StorageSize(NSDictionary *observation) {
  _detailCopy.stringValue=cache?@"Application cache only. Caches may need rebuilding; settings and documents are not included.":@"Application bundle only. Documents, settings and databases are not included. Vendor helpers may remain.";
  _pathLabel.stringValue=_selectedItem[@"path"];_pathLabel.toolTip=_pathLabel.stringValue;
  NSString *reason=_selectedItem[@"reason"];
- _detailReason.stringValue=reason.length?reason:@"Removal is not enabled. Manage this item manually in Finder. Sizes are not guaranteed recoverable space.";
- if(reason.length)_detailReason.stringValue=[reason stringByAppendingString:@". Removal is not enabled."];
+ _detailReason.stringValue=reason.length?[reason stringByAppendingString:@"."]:@"Sizes are observed on disk and may not all be recoverable.";
  _detailReason.toolTip=_detailReason.stringValue;
  _listView.hidden=YES;_detailView.hidden=NO;
 }
 - (void)back:(id)sender {
  _listView.hidden=NO;_detailView.hidden=YES;self.selectedItem=nil;
  _pathLabel.stringValue=@"";_pathLabel.toolTip=nil;_detailIcon.image=nil;
- [_table deselectAll:nil];_reviewButton.enabled=NO;
+ [_table deselectAll:nil];
 }
 - (void)reveal:(id)sender {
  if(!_active || !_selectedItem)return;
