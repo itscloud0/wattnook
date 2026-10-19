@@ -415,17 +415,17 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     }
     CGFloat markerX = [self markerX];
     if (limit >= 0 && self.limitEditable) {
-        // A slider knob says "drag me"; the bare tick only marks a read-only limit.
-        NSRect knob = NSMakeRect(markerX - 8, NSMidY(rail) - 8, 16, 16);
+        // A raised grip says "drag me"; the bare tick only marks a read-only limit.
+        NSRect grip = NSMakeRect(markerX - 3, NSMidY(rail) - 11, 6, 22);
+        NSBezierPath *gripPath = [NSBezierPath bezierPathWithRoundedRect:grip xRadius:3 yRadius:3];
         [NSGraphicsContext saveGraphicsState];
         NSShadow *shadow = [[[NSShadow alloc] init] autorelease];
         shadow.shadowColor = [NSColor.blackColor colorWithAlphaComponent:0.35];
         shadow.shadowOffset = NSMakeSize(0, -1); shadow.shadowBlurRadius = 3; [shadow set];
-        [[NSColor colorWithCalibratedWhite:0.96 alpha:1] setFill];
-        [[NSBezierPath bezierPathWithOvalInRect:knob] fill];
+        [[NSColor colorWithCalibratedWhite:0.96 alpha:1] setFill]; [gripPath fill];
         [NSGraphicsContext restoreGraphicsState];
         if (self.window.firstResponder == self) {
-            NSBezierPath *ring = [NSBezierPath bezierPathWithOvalInRect:NSInsetRect(knob, -3, -3)];
+            NSBezierPath *ring = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(grip, -3, -3) xRadius:5 yRadius:5];
             ring.lineWidth = 2; [NSColor.keyboardFocusIndicatorColor setStroke]; [ring stroke];
         }
     } else if (limit >= 0) {
