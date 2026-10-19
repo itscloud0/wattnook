@@ -22,11 +22,19 @@ func setNativeLimit(c *gin.Context, limit int) {
 	}
 	maintainLoopInnerLock.Lock()
 	defer maintainLoopInnerLock.Unlock()
-	if heatHold != nil && heatHold.holder.Active() {
-		c.AbortWithStatusJSON(http.StatusConflict, "Heat Protection is pausing charging; change the Apple limit after the battery cools")
-		return
+	// An active hold owns mclLimitValue. Release it so the new limit becomes
+	// the restore point, then let Heat Protection decide again immediately.
+	if heatHold != nil {
+		if err := heatHold.release(); err != nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, err.Error())
+			return
+		}
 	}
-	if err := nativeCharge.SetLimit(limit); err != nil {
+	err := nativeCharge.SetLimit(limit)
+	if heatHold != nil {
+		heatHold.reconcile(conf.HeatProtectionEnabled(), conf.HeatPauseTemperatureCelsius(), conf.HeatResumeTemperatureCelsius())
+	}
+	if err != nil {
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, err.Error())
 		return
 	}

@@ -121,7 +121,7 @@ func (c *menuController) setLimit(limit int) bool {
 				c.nativeLimitPending = false
 				c.applyNativeLimit(actual)
 				if writeErr != nil {
-					showAlert("Apple charge limit not confirmed", writeErr.Error())
+					showAlert("Charge limit not changed", writeErr.Error())
 				} else if readErr != nil {
 					showAlert("Apple charge limit unavailable", readErr.Error())
 				}

@@ -26,7 +26,7 @@ Runs in the 10 s maintain loop in native mode, when `capabilities.chargeHold` is
 - A hold record found at startup (crash) is released before native capability detection.
 - Sensor error: no new hold, no release; next valid reading decides.
 - Hold/release failure: fault, no retries until Heat Protection is re-configured.
-- While held, `GET /limit` reports the saved Apple limit and `PUT /limit` returns 409.
+- While held, `GET /limit` reports the saved Apple limit; `PUT /limit` releases the hold, applies the new limit and re-evaluates at once.
 - Temperature: hottest of SMC TB1T/TB2T, IOKit fallback.
 
 ## Live verification — 2026-10-19 22:03–22:07

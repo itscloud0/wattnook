@@ -193,18 +193,21 @@ func TestNativeHeatProtectionAPIEnablesChargeHold(t *testing.T) {
 	if len(holder.holds) != 1 || holder.holds[0] != 72 {
 		t.Fatalf("loop did not hold: %v", holder.holds)
 	}
-	// While held, /limit reports the saved Apple limit and limit edits wait.
+	// While held, /limit reports the saved Apple limit.
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest("GET", "/limit", nil))
 	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != "80" {
 		t.Fatalf("limit while held: %d %s", w.Code, w.Body.String())
 	}
+	// A limit change releases the hold, applies the limit, then re-holds
+	// at once because the battery is still hot.
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest("PUT", "/limit", strings.NewReader("90")))
-	if w.Code != 409 || len(nativeCharge.(*nativeFixture).writes) != 0 {
-		t.Fatalf("limit write while held: %d", w.Code)
+	writes := nativeCharge.(*nativeFixture).writes
+	if w.Code != 201 || len(writes) != 1 || writes[0] != 90 || holder.releases != 1 || len(holder.holds) != 2 || !holder.active {
+		t.Fatalf("limit write while held: %d writes=%v releases=%d holds=%v", w.Code, writes, holder.releases, holder.holds)
 	}
-	if w := put(`{"enabled":false}`); w.Code != 201 || holder.active || holder.releases != 1 {
+	if w := put(`{"enabled":false}`); w.Code != 201 || holder.active || holder.releases != 2 {
 		t.Fatalf("off: %d active=%v", w.Code, holder.active)
 	}
 }
