@@ -52,63 +52,79 @@ static NSColor *FlowColor(void) {
 }
 
 // Sankey-style bands: constant thickness per stream (thickness encodes
-// watts), straight lead-ins at the nodes and one smooth S-curve between.
+// watts), round ends that stop just short of the nodes, straight lead-ins
+// and one smooth S-curve between.
+static const CGFloat FlowNodeGap = 4;
+
 static NSBezierPath *Band(CGFloat x0, CGFloat sourceTop, CGFloat sourceBottom,
-                          CGFloat x1, CGFloat targetTop, CGFloat targetBottom) {
-    CGFloat lead = 12, xs = x0 + lead, xe = x1 - lead, k = (xe - xs) * 0.5;
+                          CGFloat x1, CGFloat targetTop, CGFloat targetBottom,
+                          BOOL capStart, BOOL capEnd) {
+    CGFloat sr = (sourceTop - sourceBottom) / 2, tr = (targetTop - targetBottom) / 2;
+    if (capStart) x0 += sr;
+    if (capEnd) x1 -= tr;
+    CGFloat lead = 10, xs = x0 + lead, xe = x1 - lead, k = (xe - xs) * 0.5;
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path moveToPoint:NSMakePoint(x0, sourceTop)];
     [path lineToPoint:NSMakePoint(xs, sourceTop)];
     [path curveToPoint:NSMakePoint(xe, targetTop)
          controlPoint1:NSMakePoint(xs + k, sourceTop) controlPoint2:NSMakePoint(xe - k, targetTop)];
     [path lineToPoint:NSMakePoint(x1, targetTop)];
-    [path lineToPoint:NSMakePoint(x1, targetBottom)];
+    if (capEnd) [path appendBezierPathWithArcWithCenter:NSMakePoint(x1, targetTop - tr)
+        radius:tr startAngle:90 endAngle:-90 clockwise:YES];
+    else [path lineToPoint:NSMakePoint(x1, targetBottom)];
     [path lineToPoint:NSMakePoint(xe, targetBottom)];
     [path curveToPoint:NSMakePoint(xs, sourceBottom)
          controlPoint1:NSMakePoint(xe - k, targetBottom) controlPoint2:NSMakePoint(xs + k, sourceBottom)];
     [path lineToPoint:NSMakePoint(x0, sourceBottom)];
+    if (capStart) [path appendBezierPathWithArcWithCenter:NSMakePoint(x0, sourceBottom + sr)
+        radius:sr startAngle:-90 endAngle:90 clockwise:YES];
     [path closePath];
     return path;
 }
 
-static void FillFlow(NSBezierPath *path, CGFloat lighten) {
-    NSColor *accent = [FlowColor() blendedColorWithFraction:lighten ofColor:NSColor.whiteColor];
-    NSGradient *gradient = [[[NSGradient alloc] initWithStartingColor:
-        [accent blendedColorWithFraction:0.18 ofColor:NSColor.whiteColor] endingColor:accent] autorelease];
-    [gradient drawInBezierPath:path angle:-90];
+static void FillFlow(NSBezierPath *path) {
+    [FlowColor() setFill];
+    [path fill];
 }
 
 // A single straight stream of constant thickness between two nodes.
 static NSBezierPath *Flow(CGFloat x0, CGFloat y0, CGFloat x1, CGFloat y1,
                           CGFloat startWidth, CGFloat endWidth) {
     (void)endWidth;
-    NSBezierPath *path = Band(x0, y0 + startWidth / 2, y0 - startWidth / 2,
-                              x1, y1 + startWidth / 2, y1 - startWidth / 2);
-    FillFlow(path, 0);
+    NSBezierPath *path = Band(x0 + FlowNodeGap, y0 + startWidth / 2, y0 - startWidth / 2,
+                              x1 - FlowNodeGap, y1 + startWidth / 2, y1 - startWidth / 2, YES, YES);
+    FillFlow(path);
     return path;
 }
 
-// Two streams stacked at the shared node, splitting to (or merging from) the
-// upper and lower nodes. The upper stream is slightly lighter so the split
-// reads without a seam.
+// Two streams stacked into one trunk at the shared node, splitting to (or
+// merging from) the upper and lower nodes. The trunk gets a single round
+// end, so the split reads as one stream dividing.
 static NSBezierPath *Fork(CGFloat x0, CGFloat x1, CGFloat upperWidth,
                           CGFloat lowerWidth, BOOL merge) {
-    CGFloat center = 49, top = center + (upperWidth + lowerWidth) / 2;
-    NSBezierPath *upper = Band(x0, top, top - upperWidth, x1, 70 + upperWidth / 2, 70 - upperWidth / 2);
-    NSBezierPath *lower = Band(x0, top - upperWidth, top - upperWidth - lowerWidth,
-                               x1, 28 + lowerWidth / 2, 28 - lowerWidth / 2);
+    CGFloat center = 49, radius = (upperWidth + lowerWidth) / 2, top = center + radius;
+    CGFloat trunk = x0 + FlowNodeGap + radius;
+    // The upper band overlaps the lower by a hair so antialiasing leaves no seam.
+    NSBezierPath *upper = Band(trunk, top, top - upperWidth - 0.6,
+                               x1 - FlowNodeGap, 70 + upperWidth / 2, 70 - upperWidth / 2, NO, YES);
+    NSBezierPath *lower = Band(trunk, top - upperWidth, top - upperWidth - lowerWidth,
+                               x1 - FlowNodeGap, 28 + lowerWidth / 2, 28 - lowerWidth / 2, NO, YES);
+    NSBezierPath *cap = [NSBezierPath bezierPath];
+    [cap moveToPoint:NSMakePoint(trunk + 1, center + radius)];
+    [cap appendBezierPathWithArcWithCenter:NSMakePoint(trunk, center)
+        radius:radius startAngle:90 endAngle:270 clockwise:NO];
+    [cap lineToPoint:NSMakePoint(trunk + 1, center - radius)];
+    [cap closePath];
     if (merge) {
         NSAffineTransform *mirror = [NSAffineTransform transform];
         [mirror translateXBy:x0 + x1 yBy:0];
         [mirror scaleXBy:-1 yBy:1];
-        [upper transformUsingAffineTransform:mirror];
-        [lower transformUsingAffineTransform:mirror];
+        for (NSBezierPath *path in @[upper, lower, cap]) [path transformUsingAffineTransform:mirror];
     }
-    FillFlow(lower, 0);
-    FillFlow(upper, 0.12);
-    NSBezierPath *both = [NSBezierPath bezierPath];
-    [both appendBezierPath:upper]; [both appendBezierPath:lower];
-    return both;
+    for (NSBezierPath *path in @[cap, lower, upper]) FillFlow(path);
+    NSBezierPath *all = [NSBezierPath bezierPath];
+    [all appendBezierPath:upper]; [all appendBezierPath:lower]; [all appendBezierPath:cap];
+    return all;
 }
 
 static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRect rect, NSColor *muted) {
@@ -123,7 +139,7 @@ static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRe
 }
 
 static CGFloat FlowWidth(double watts) {
-    return MIN(16, MAX(4, 2.5 + sqrt(MAX(0, watts)) * 1.8));
+    return MIN(12, MAX(3, 2 + sqrt(MAX(0, watts)) * 1.4));
 }
 
 static NSString *Watts(double watts) {
@@ -170,7 +186,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     if (!_flowHighlight) {
         _flowHighlight = [[CAGradientLayer alloc] init];
         _flowHighlight.colors = @[(id)NSColor.clearColor.CGColor,
-            (id)[NSColor.whiteColor colorWithAlphaComponent:0.30].CGColor,
+            (id)[NSColor.whiteColor colorWithAlphaComponent:0.20].CGColor,
             (id)NSColor.clearColor.CGColor];
         _flowHighlight.startPoint = CGPointMake(0, 0.5);
         _flowHighlight.endPoint = CGPointMake(1, 0.5);
@@ -198,7 +214,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
         CABasicAnimation *animation = [CABasicAnimation animationWithKeyPath:@"locations"];
         animation.fromValue = @[@-0.2, @-0.1, @0];
         animation.toValue = @[@1, @1.1, @1.2];
-        animation.duration = 2.2; animation.repeatCount = HUGE_VALF;
+        animation.duration = 3.2; animation.repeatCount = HUGE_VALF;
         [_flowHighlight addAnimation:animation forKey:@"flow"];
     }
 }
@@ -463,7 +479,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
         else {
             // No measurable power yet: a faint track, not a full-strength stream.
             [[NSColor.labelColor colorWithAlphaComponent:0.12] setFill];
-            [Band(x0, 52, 48, x1, 52, 48) fill];
+            [Band(x0 + FlowNodeGap, 51.5, 48.5, x1 - FlowNodeGap, 51.5, 48.5, YES, YES) fill];
         }
         FlowNode(fromBattery ? @"battery.100percent" : @"powerplug.fill",
                  NSMakeRect(20, 33, 34, 34), muted, dark);

@@ -683,7 +683,7 @@ int main(int argc, const char *argv[]) {
                 for (CALayer *layer in c.powerFlowView.layer.sublayers) {
                     CABasicAnimation *pulse = (CABasicAnimation *)[layer animationForKey:@"flow"];
                     if (!pulse) continue;
-                    assert(fabs(pulse.duration - 2.2) < 0.001);
+                    assert(fabs(pulse.duration - 3.2) < 0.001);
                     __block NSInteger starts = 0, closes = 0;
                     CGPathRef outline = ((CAShapeLayer *)layer.mask).path;
                     CGPathApplyWithBlock(outline, ^(const CGPathElement *element) {
@@ -691,7 +691,7 @@ int main(int argc, const char *argv[]) {
                         closes += element->type == kCGPathElementCloseSubpath;
                     });
                     // Two Sankey bands (AppKit may append empty moves after closes).
-                    assert(starts >= 2 && starts <= 4 && closes == 2);
+                    assert(starts >= 3 && starts <= 6 && closes == 3);
                     CGFloat center = NSMidX(c.powerFlowView.bounds), width = NSWidth(c.powerFlowView.bounds);
                     // Solid shared trunk at the common node, a gap between branches mid-way.
                     assert(CGPathContainsPoint(outline, NULL, CGPointMake(merge ? width-54-8 : 54+8, 49), NO));
