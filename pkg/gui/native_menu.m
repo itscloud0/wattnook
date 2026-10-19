@@ -465,6 +465,9 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
         NSForegroundColorAttributeName:NSColor.whiteColor};
     CGFloat labelWidth = 0, valueWidth = 0;
     for (NSString *label in labels) labelWidth = MAX(labelWidth,[label sizeWithAttributes:attributes].width);
+    // Reserve the widest value so the status item (and the popover anchored
+    // to it) does not shift as readings change.
+    valueWidth = labels.count ? [@"100%" sizeWithAttributes:attributes].width : 0;
     for (NSString *value in values) valueWidth = MAX(valueWidth,[value sizeWithAttributes:attributes].width);
     CGFloat stackWidth = labels.count ? ceil(labelWidth+5+valueWidth)+3 : 0;
     NSString *charge = self.powerFlowView.chargePercent < 0 ? @"—%" :
@@ -473,7 +476,8 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
         [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium],
         NSForegroundColorAttributeName:NSColor.whiteColor};
     CGFloat percentGap = percent && labels.count ? 10 : 0;
-    CGFloat percentWidth = percent ? percentGap+ceil([charge sizeWithAttributes:chargeStyle].width)+4 : 0;
+    CGFloat percentWidth = percent ? percentGap+ceil(MAX([charge sizeWithAttributes:chargeStyle].width,
+        [@"100%" sizeWithAttributes:chargeStyle].width))+4 : 0;
     CGFloat iconGap = icon && (labels.count || percent) ? 8 : 0;
     CGFloat iconWidth = self.batteryIcon ? self.batteryIcon.size.width : 25;
     NSImage *combined = [[[NSImage alloc] initWithSize:

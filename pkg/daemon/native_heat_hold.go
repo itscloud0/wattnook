@@ -35,6 +35,9 @@ type nativeHeatHold struct {
 	holder     chargeHolder
 	sample     func() (heatHoldSample, error)
 	appleLimit func() (int, error)
+	setLimit   func(int) error
+	// pendingLimit is a charge limit chosen while held (0 = none).
+	pendingLimit int
 	// fault stops further transitions until Heat Protection is re-enabled.
 	fault          string
 	lastTransition time.Time
@@ -100,6 +103,7 @@ func initializeHeatHold(configPath string) {
 			}
 			return state.EffectiveLimit(), nil
 		},
+		setLimit: func(limit int) error { return nativeCharge.SetLimit(limit) },
 	}
 }
 
@@ -114,6 +118,12 @@ func (h *nativeHeatHold) release() error {
 	}
 	h.lastTransition = time.Now()
 	logrus.Info("heat protection resumed charging")
+	if limit := h.pendingLimit; limit > 0 {
+		h.pendingLimit = 0
+		if err := h.setLimit(limit); err != nil {
+			logrus.WithError(err).WithField("limit", limit).Error("apply charge limit chosen during heat hold")
+		}
+	}
 	return nil
 }
 
@@ -213,6 +223,9 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 func (h *nativeHeatHold) savedAppleLimit() (int, bool) {
 	if h == nil || !h.holder.Active() {
 		return 0, false
+	}
+	if h.pendingLimit > 0 {
+		return h.pendingLimit, true
 	}
 	return h.holder.SavedLimit()
 }

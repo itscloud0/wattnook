@@ -36,6 +36,10 @@ func main() {
 	}
 	defer c.Close()
 
+	if len(os.Args) > 1 && os.Args[1] == "-temps" {
+		printTemperatures(c)
+		return
+	}
 	seen := map[string]bool{}
 	keys := append([]string{}, focus...)
 	if n, err := c.KeyCount(); err == nil {
@@ -73,5 +77,30 @@ func main() {
 			}
 		}
 		fmt.Printf("%-5s %-5s %-4d 0x%02x  %-24s %s\n", k, info.DataType, info.DataSize, info.Attribute, attrs(info.Attribute), val)
+	}
+}
+
+// printTemperatures lists every readable float temperature key (T***) in a
+// plausible range, hottest first per prefix, still read-only.
+func printTemperatures(c *gosmc.Client) {
+	n, err := c.KeyCount()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "key count:", err)
+		return
+	}
+	for i := uint32(0); i < n; i++ {
+		k, err := c.KeyAt(i)
+		if err != nil || !strings.HasPrefix(k, "T") {
+			continue
+		}
+		v, err := c.Read(k)
+		if err != nil || v.DataType != "flt " {
+			continue
+		}
+		t, err := v.Float64()
+		if err != nil || t < 10 || t > 120 {
+			continue
+		}
+		fmt.Printf("%s %.1f\n", k, t)
 	}
 }

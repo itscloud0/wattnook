@@ -22,19 +22,15 @@ func setNativeLimit(c *gin.Context, limit int) {
 	}
 	maintainLoopInnerLock.Lock()
 	defer maintainLoopInnerLock.Unlock()
-	// An active hold owns mclLimitValue. Release it so the new limit becomes
-	// the restore point, then let Heat Protection decide again immediately.
-	if heatHold != nil {
-		if err := heatHold.release(); err != nil {
-			c.AbortWithStatusJSON(http.StatusServiceUnavailable, err.Error())
-			return
-		}
+	// An active hold owns mclLimitValue. Releasing it for every change would
+	// pulse the adapter on each slider step, so keep the new limit pending
+	// and apply it when the hold ends.
+	if heatHold != nil && heatHold.holder.Active() {
+		heatHold.pendingLimit = limit
+		c.IndentedJSON(http.StatusCreated, "Charge limit saved; it applies once the battery cools")
+		return
 	}
-	err := nativeCharge.SetLimit(limit)
-	if heatHold != nil {
-		heatHold.reconcile(conf.HeatProtectionEnabled(), conf.HeatPauseTemperatureCelsius(), conf.HeatResumeTemperatureCelsius())
-	}
-	if err != nil {
+	if err := nativeCharge.SetLimit(limit); err != nil {
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, err.Error())
 		return
 	}

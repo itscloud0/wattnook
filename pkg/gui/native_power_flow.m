@@ -351,7 +351,9 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     BOOL adapter = self.hasTelemetry && self.pluggedIn && self.adapterWatts > 0.25;
     BOOL charging = self.hasTelemetry && self.batteryWatts > 0.25;
     BOOL statusCharging = self.chargingStateKnown ? self.batteryCharging : charging;
-    BOOL discharging = self.hasTelemetry && self.batteryWatts < -0.25;
+    // On adapter power a held battery reads a few hundred mW either way;
+    // don't present that noise as the battery helping power the Mac.
+    BOOL discharging = self.hasTelemetry && self.batteryWatts < (self.pluggedIn ? -0.75 : -0.25);
     BOOL hybrid = adapter && discharging;
     BOOL atLimit = adapter && !charging && !discharging &&
         limit >= 0 && limit < 100 && self.chargePercent >= limit - 1;

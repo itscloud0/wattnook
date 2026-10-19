@@ -43,7 +43,8 @@ func newHoldFixture(sample heatHoldSample) (*nativeHeatHold, *holderFixture, *he
 	s := sample
 	h := &nativeHeatHold{holder: holder,
 		sample:     func() (heatHoldSample, error) { return s, nil },
-		appleLimit: func() (int, error) { return 80, nil }}
+		appleLimit: func() (int, error) { return 80, nil },
+		setLimit:   func(int) error { return nil }}
 	return h, holder, &s
 }
 
@@ -199,15 +200,26 @@ func TestNativeHeatProtectionAPIEnablesChargeHold(t *testing.T) {
 	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != "80" {
 		t.Fatalf("limit while held: %d %s", w.Code, w.Body.String())
 	}
-	// A limit change releases the hold, applies the limit, then re-holds
-	// at once because the battery is still hot.
-	w = httptest.NewRecorder()
-	router.ServeHTTP(w, httptest.NewRequest("PUT", "/limit", strings.NewReader("90")))
-	writes := nativeCharge.(*nativeFixture).writes
-	if w.Code != 201 || len(writes) != 1 || writes[0] != 90 || holder.releases != 1 || len(holder.holds) != 2 || !holder.active {
-		t.Fatalf("limit write while held: %d writes=%v releases=%d holds=%v", w.Code, writes, holder.releases, holder.holds)
+	// A limit change while held is kept pending: no release, no adapter
+	// pulse, no Apple write until the hold ends.
+	for _, limit := range []string{"85", "90"} {
+		w = httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("PUT", "/limit", strings.NewReader(limit)))
+		if w.Code != 201 {
+			t.Fatalf("limit write while held: %d %s", w.Code, w.Body.String())
+		}
 	}
-	if w := put(`{"enabled":false}`); w.Code != 201 || holder.active || holder.releases != 2 {
+	if holder.releases != 0 || len(holder.holds) != 1 || len(nativeCharge.(*nativeFixture).writes) != 0 {
+		t.Fatalf("pending limit touched hardware: releases=%d holds=%v", holder.releases, holder.holds)
+	}
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/limit", nil))
+	if strings.TrimSpace(w.Body.String()) != "90" {
+		t.Fatalf("pending limit not reported: %s", w.Body.String())
+	}
+	var applied []int
+	heatHold.setLimit = func(limit int) error { applied = append(applied, limit); return nil }
+	if w := put(`{"enabled":false}`); w.Code != 201 || holder.active || holder.releases != 1 || len(applied) != 1 || applied[0] != 90 {
 		t.Fatalf("off: %d active=%v", w.Code, holder.active)
 	}
 }
