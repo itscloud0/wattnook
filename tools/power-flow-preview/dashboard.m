@@ -339,7 +339,7 @@ int main(int argc, const char *argv[]) {
             power.pluggedIn = [state[@"plug"] boolValue]; power.adapterWatts = [state[@"adapter"] doubleValue];
             power.batteryWatts = [state[@"battery"] doubleValue]; power.systemWatts = [state[@"system"] doubleValue];
             power.chargingStateKnown = YES; power.batteryCharging = power.batteryWatts > 0.25;
-            power.heatPaused = [state[@"heat"] boolValue]; power.temperatureCelsius = 36.5;
+            power.heatPaused = [state[@"heat"] boolValue]; power.temperatureCelsius = 36.5; power.processorTemperatureCelsius = 88.4;
             power.hasTelemetry = ![state[@"name"] isEqual:@"unavailable"];
             BattRefreshPopover(c,63,81);
             Capture(view,directory,state[@"name"]);

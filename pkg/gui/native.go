@@ -221,6 +221,10 @@ func (m *nativeMenu) setHeatStatus(paused bool, temperatureCelsius float64) {
 	C.batt_menu_set_heat_status(m.ref, C.bool(paused), C.double(temperatureCelsius))
 }
 
+func (m *nativeMenu) setProcessorTemperature(celsius float64) {
+	C.batt_menu_set_processor_temperature(m.ref, C.double(celsius))
+}
+
 func (m *nativeMenu) setHeatDetail(detail string) {
 	withCString(detail, func(value *C.char) { C.batt_menu_set_heat_detail(m.ref, value) })
 }

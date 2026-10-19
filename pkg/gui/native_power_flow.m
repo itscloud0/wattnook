@@ -136,6 +136,17 @@ static NSBezierPath *Fork(CGFloat x0, CGFloat x1, CGFloat upperWidth,
     return path;
 }
 
+static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRect rect, NSColor *muted) {
+    NSMutableAttributedString *text = [[[NSMutableAttributedString alloc] initWithString:[name stringByAppendingString:@"  "]
+        attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:11 weight:NSFontWeightMedium],
+                     NSForegroundColorAttributeName:muted}] autorelease];
+    [text appendAttributedString:[[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%.0f°C", celsius]
+        attributes:@{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:14 weight:NSFontWeightMedium],
+                     NSForegroundColorAttributeName:color}] autorelease]];
+    NSSize measured = text.size;
+    [text drawAtPoint:NSMakePoint(NSMaxX(rect) - measured.width, NSMidY(rect) - measured.height / 2)];
+}
+
 static CGFloat FlowWidth(double watts) {
     return MIN(21, MAX(7, 4 + sqrt(MAX(0, watts)) * 2.2));
 }
@@ -369,12 +380,19 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
          NSColor.labelColor, NSTextAlignmentLeft);
     Text(state, NSMakeRect(24, 140, 250, 18), 13, NSFontWeightRegular,
          NSColor.secondaryLabelColor, NSTextAlignmentLeft);
+    // Battery and processor temperatures side by side: Heat Protection acts
+    // on the battery, while a hot fanless Mac is usually the processor.
+    NSColor *headerMuted = NSColor.secondaryLabelColor;
+    BOOL showCPU = self.processorTemperatureCelsius > 0;
     if (self.temperatureCelsius > 0) {
-        NSColor *temperatureColor = self.heatPaused && self.pluggedIn ?
-            NSColor.systemOrangeColor : NSColor.labelColor;
-        Text([NSString stringWithFormat:@"%.1f°C", self.temperatureCelsius],
-             NSMakeRect(right - 70, 174, 66, 24), 14, NSFontWeightMedium,
-             temperatureColor, NSTextAlignmentRight);
+        NSColor *color = self.heatPaused && self.pluggedIn ? NSColor.systemOrangeColor : NSColor.labelColor;
+        TemperatureLine(@"Battery", self.temperatureCelsius, color,
+            NSMakeRect(right - 150, showCPU ? 186 : 174, 146, 20), headerMuted);
+    }
+    if (showCPU) {
+        NSColor *color = self.processorTemperatureCelsius >= 85 ? NSColor.systemOrangeColor : NSColor.labelColor;
+        TemperatureLine(@"CPU", self.processorTemperatureCelsius, color,
+            NSMakeRect(right - 150, 164, 146, 20), headerMuted);
     }
 
     NSRect rail = [self railRect];

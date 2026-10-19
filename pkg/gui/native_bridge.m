@@ -92,6 +92,11 @@ void batt_menu_set_heat_status(BattMenuRef menu, bool paused, double temperature
     BattController(menu).powerFlowView.temperatureCelsius = temperature_celsius;
 }
 
+void batt_menu_set_processor_temperature(BattMenuRef menu, double celsius) {
+    BattController(menu).powerFlowView.processorTemperatureCelsius = celsius;
+    [BattController(menu).powerFlowView setNeedsDisplay:YES];
+}
+
 void batt_menu_set_heat_detail(BattMenuRef menu, const char *detail) {
     @autoreleasepool { BattController(menu).heatDetail = BattString(detail); }
 }

@@ -172,6 +172,7 @@ func (c *menuController) refreshOnOpen() {
 		c.updateHeatProtection(conf, heat)
 	}
 	c.menu.setHeatStatus(c.heatPaused, c.temperatureCelsius)
+	c.menu.setProcessorTemperature(processorTemperature.Celsius())
 
 	c.updateMagSafeChecks(conf.ControlMagSafeLED())
 	c.menu.setChecked(itemPreventIdleSleep, conf.PreventIdleSleep())

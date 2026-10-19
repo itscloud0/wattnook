@@ -89,6 +89,7 @@ void batt_menu_set_status_icon(BattMenuRef menu, bool installed, bool capable, b
 void batt_menu_set_power(BattMenuRef menu, int item, const char *label, double value);
 void batt_menu_set_heat_status(BattMenuRef menu, bool paused, double temperature_celsius);
 void batt_menu_set_heat_detail(BattMenuRef menu, const char *detail);
+void batt_menu_set_processor_temperature(BattMenuRef menu, double celsius);
 void batt_menu_set_power_flow(BattMenuRef menu, double adapter, double system, double battery,
                               bool heat_paused, double temperature_celsius);
 void batt_menu_set_limit(BattMenuRef menu, int limit_percent);
