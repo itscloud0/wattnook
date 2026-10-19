@@ -284,6 +284,16 @@ int main(int argc, const char *argv[]) {
         assert(NSHeight(c.powerFlowView.frame) == 220);
         assert(NSEqualRects(c.powerFlowView.frame,NSMakeRect(0,214,400,220)));
         assert(NSMaxY(FindButton(view,@"History ›").frame) + 6 <= 446);
+        // Keyboard: ⌘2/⌘3/⌘1 switch tabs, ⌘, toggles Settings.
+        NSEvent *(^command)(NSString *) = ^NSEvent *(NSString *key) {
+            return [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:NSEventModifierFlagCommand
+                timestamp:0 windowNumber:0 context:nil characters:key charactersIgnoringModifiers:key isARepeat:NO keyCode:0];
+        };
+        assert([view performKeyEquivalent:command(@"2")] && ((NSButton *)FindButton(view,@"System")).state == NSControlStateValueOn);
+        assert([view performKeyEquivalent:command(@"3")] && ((NSButton *)FindButton(view,@"Storage")).state == NSControlStateValueOn);
+        assert([view performKeyEquivalent:command(@",")] && !((NSView *)[view valueForKey:@"_settingsPage"]).hidden);
+        assert([view performKeyEquivalent:command(@",")] && [view performKeyEquivalent:command(@"1")]);
+        assert(((NSButton *)FindButton(view,@"Battery")).state == NSControlStateValueOn && NSHeight(view.bounds) == 390);
         NSButton *historyBack = FindButton([view valueForKey:@"_historyPage"],@"System");
         assert(historyBack && NSMaxY(historyBack.frame) + 6 <= 446 && historyBack.image != nil);
         assert(NSWidth(FindButton(view,@"Battery").frame) >= 112);
@@ -403,6 +413,7 @@ int main(int argc, const char *argv[]) {
         assert([c.darkButton.title isEqual:@"Keep Awake"]);
         assert([[c.darkButton valueForKey:@"subtitle"] isEqual:@"Status unavailable"]);
         c.powerFlowView.limitEditable = YES;
+        Capture(view,directory,@"editable-limit");
         [c.powerFlowView keyDown:[NSEvent keyEventWithType:NSEventTypeKeyDown
             location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0 context:nil
             characters:@"" charactersIgnoringModifiers:@"" isARepeat:NO keyCode:124]];

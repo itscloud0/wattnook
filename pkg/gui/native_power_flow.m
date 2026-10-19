@@ -320,6 +320,8 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
 - (BOOL)acceptsFirstResponder {
     return self.limitEditable;
 }
+- (BOOL)becomeFirstResponder { [self setNeedsDisplay:YES]; return [super becomeFirstResponder]; }
+- (BOOL)resignFirstResponder { [self setNeedsDisplay:YES]; return [super resignFirstResponder]; }
 
 - (void)keyDown:(NSEvent *)event {
     if (self.limitEditable && (event.keyCode == 123 || event.keyCode == 124)) {
@@ -412,9 +414,24 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
         [[NSBezierPath bezierPathWithRoundedRect:fill xRadius:3 yRadius:3] fill];
     }
     CGFloat markerX = [self markerX];
-    [NSColor.labelColor setFill];
-    if (limit >= 0) [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(markerX - 1.5, 126, 3, 16)
-                                     xRadius:2 yRadius:2] fill];
+    if (limit >= 0 && self.limitEditable) {
+        // A slider knob says "drag me"; the bare tick only marks a read-only limit.
+        NSRect knob = NSMakeRect(markerX - 8, NSMidY(rail) - 8, 16, 16);
+        [NSGraphicsContext saveGraphicsState];
+        NSShadow *shadow = [[[NSShadow alloc] init] autorelease];
+        shadow.shadowColor = [NSColor.blackColor colorWithAlphaComponent:0.35];
+        shadow.shadowOffset = NSMakeSize(0, -1); shadow.shadowBlurRadius = 3; [shadow set];
+        [[NSColor colorWithCalibratedWhite:0.96 alpha:1] setFill];
+        [[NSBezierPath bezierPathWithOvalInRect:knob] fill];
+        [NSGraphicsContext restoreGraphicsState];
+        if (self.window.firstResponder == self) {
+            NSBezierPath *ring = [NSBezierPath bezierPathWithOvalInRect:NSInsetRect(knob, -3, -3)];
+            ring.lineWidth = 2; [NSColor.keyboardFocusIndicatorColor setStroke]; [ring stroke];
+        }
+    } else if (limit >= 0) {
+        [NSColor.labelColor setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(markerX - 1.5, 126, 3, 16) xRadius:2 yRadius:2] fill];
+    }
     // The controller's non-interactive label never intercepts marker dragging.
     [[NSColor colorWithCalibratedWhite:dark ? 0.28 : 0.80 alpha:1] setFill];
     NSRectFill(NSMakeRect(14, 104, width - 28, 0.7));

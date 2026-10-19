@@ -24,12 +24,15 @@ static const CGFloat WattBatteryPopoverHeight = 532 - 142;
 @property(nonatomic, assign) BOOL grouped;
 @property(nonatomic, assign) BOOL tab;
 @property(nonatomic, copy) NSString *subtitle;
+// Trailing chevron for buttons that open a menu instead of acting at once.
+@property(nonatomic, assign) BOOL opensMenu;
+@property(nonatomic, retain) NSColor *swatch;
 @end
 @implementation WattButton {
     NSTrackingArea *_tracking;
     BOOL _hover;
 }
-- (void)dealloc { [_tracking release]; [_subtitle release]; [super dealloc]; }
+- (void)dealloc { [_tracking release]; [_subtitle release]; [_swatch release]; [super dealloc]; }
 - (void)updateTrackingAreas {
     if (_tracking) [self removeTrackingArea:_tracking];
     [_tracking release];
@@ -73,7 +76,7 @@ static const CGFloat WattBatteryPopoverHeight = 532 - 142;
     }
     NSColor *ink = !self.enabled ? NSColor.disabledControlTextColor :
         _grouped && !_selected ? NSColor.secondaryLabelColor : NSColor.labelColor;
-    CGFloat iconWidth = self.image ? 17 : 0;
+    CGFloat iconWidth = self.image ? 17 : (_swatch ? 10 : 0);
     NSDictionary *style = @{NSFontAttributeName:self.font,
         NSForegroundColorAttributeName:ink};
     NSSize textSize = [self.title sizeWithAttributes:style];
@@ -95,10 +98,29 @@ static const CGFloat WattBatteryPopoverHeight = 532 - 142;
             operation:NSCompositingOperationSourceOver fraction:self.enabled ? 1 : 0.4
             respectFlipped:YES hints:nil];
         start += iconWidth + (self.title.length ? 10 : 0);
+    } else if (_swatch) {
+        // A palette pill shows its color, not just its name.
+        NSRect dot = NSMakeRect(start, (NSHeight(self.bounds)-10)/2, 10, 10);
+        [_swatch setFill]; [[NSBezierPath bezierPathWithOvalInRect:dot] fill];
+        start += iconWidth + 8;
     }
     CGFloat titleOffset = _subtitle.length ? (self.isFlipped ? -7 : 7) : 0;
     [self.title drawAtPoint:NSMakePoint(start, (NSHeight(self.bounds)-textSize.height)/2 + titleOffset)
         withAttributes:style];
+    if (_opensMenu) {
+        NSImage *chevron = [NSImage imageWithSystemSymbolName:@"chevron.down" accessibilityDescription:nil];
+        chevron = [chevron imageWithSymbolConfiguration:
+            [NSImageSymbolConfiguration configurationWithPointSize:9 weight:NSFontWeightSemibold]];
+        NSSize size = chevron.size;
+        NSImage *tinted = [[[NSImage alloc] initWithSize:size] autorelease];
+        [tinted lockFocus];
+        [chevron drawAtPoint:NSZeroPoint fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1];
+        [NSColor.secondaryLabelColor setFill];
+        NSRectFillUsingOperation(NSMakeRect(0,0,size.width,size.height), NSCompositingOperationSourceAtop);
+        [tinted unlockFocus];
+        [tinted drawInRect:NSMakeRect(NSWidth(self.bounds)-14-size.width,(NSHeight(self.bounds)-size.height)/2,size.width,size.height)
+            fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
+    }
     if (_subtitle.length) {
         NSDictionary *secondary = @{NSFontAttributeName:[NSFont systemFontOfSize:10.5],
             NSForegroundColorAttributeName:NSColor.secondaryLabelColor};
@@ -108,6 +130,15 @@ static const CGFloat WattBatteryPopoverHeight = 532 - 142;
     }
 }
 @end
+
+static NSColor *WattPaletteSwatch(NSString *name) {
+    // Same values as WattAccentColor, so the dot previews the real accent.
+    NSDictionary *colors = @{@"Blue":NSColor.systemBlueColor,
+        @"Mint":[NSColor colorWithCalibratedRed:0.20 green:0.78 blue:0.64 alpha:1],
+        @"Violet":[NSColor colorWithCalibratedRed:0.64 green:0.46 blue:0.96 alpha:1],
+        @"Amber":[NSColor colorWithCalibratedRed:0.94 green:0.63 blue:0.23 alpha:1]};
+    return colors[name] ?: [NSColor.whiteColor colorWithAlphaComponent:0.55]; // Glass
+}
 
 static WattButton *Button(NSView *parent, NSRect frame, NSString *title,
                           NSString *symbol, id target, SEL action) {
@@ -159,11 +190,11 @@ NSString *WattCompactBytes(double bytes, BOOL binary) {
         [self addSubview:_icon];
         _name = Label(self, NSMakeRect(36, 8, 143, 19), @"Sampling…", 13, YES);
         _name.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
-        _amount = Label(self, NSMakeRect(180, 17, 112, 15), @"", 11.5, NO);
+        _amount = Label(self, NSMakeRect(180, 17, 172, 15), @"", 11.5, NO);
         _amount.textColor = NSColor.labelColor;
         _amount.alignment = NSTextAlignmentRight;
         _amount.font = [NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightRegular];
-        _relative = Label(self, NSMakeRect(180, 2, 112, 14), @"", 10.5, NO);
+        _relative = Label(self, NSMakeRect(180, 2, 172, 14), @"", 10.5, NO);
         _relative.alignment = NSTextAlignmentRight;
         _relative.font = [NSFont monospacedDigitSystemFontOfSize:10.5 weight:NSFontWeightRegular];
         _quit = Button(self, NSMakeRect(306, 4, 46, 27), @"Quit", @"", self, @selector(quit:));
@@ -186,8 +217,16 @@ NSString *WattCompactBytes(double bytes, BOOL binary) {
 }
 // Quit is a destructive-ish action; show it for the row under the pointer
 // instead of repeating it on every line.
-- (void)mouseEntered:(NSEvent *)event { (void)event; _quit.animator.alphaValue = 1; }
-- (void)mouseExited:(NSEvent *)event { (void)event; _quit.animator.alphaValue = 0; }
+- (void)setHover:(BOOL)hover {
+    if (_quit.hidden) return;
+    CGFloat width = hover ? 112 : 172;
+    for (NSTextField *field in @[_amount,_relative]) {
+        NSRect frame = field.frame; frame.size.width = width; field.animator.frame = frame;
+    }
+    _quit.animator.alphaValue = hover ? 1 : 0;
+}
+- (void)mouseEntered:(NSEvent *)event { (void)event; [self setHover:YES]; }
+- (void)mouseExited:(NSEvent *)event { (void)event; [self setHover:NO]; }
 - (void)update:(NSDictionary *)sample metric:(NSInteger)metric {
     BOOL changed = ![sample[@"path"] isEqual:self.sample[@"path"]];
     self.sample = sample;
@@ -369,6 +408,8 @@ static void Redisplay(NSView *view) {
         self, @selector(system:)); _batteryTab.selected = YES;
     _storageTab = Button(self, NSMakeRect(264,450,112,28), @"Storage", @"internaldrive", self, @selector(storage:));
     _batteryTab.grouped = _systemTab.grouped = _storageTab.grouped = YES;
+    _batteryTab.toolTip = @"Battery  ⌘1"; _systemTab.toolTip = @"System  ⌘2"; _storageTab.toolTip = @"Storage  ⌘3";
+    settings.toolTip = @"Settings  ⌘,";
     // A filled selection identifies the page; underlines are reserved for sorting.
     _batteryTab.tab = _systemTab.tab = _storageTab.tab = NO;
     _batteryPage = [[[NSView alloc] initWithFrame:NSMakeRect(0, 0, 400, 450)] autorelease];
@@ -394,6 +435,7 @@ static void Redisplay(NSView *view) {
     c.darkButton = Button(_batteryPage, NSMakeRect(204, 158, 172, 44),
         @"Keep Awake", @"", c, @selector(toggleKeepAwakeFromPopover:));
     c.heatButton.font = c.darkButton.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
+    ((WattButton *)c.heatButton).opensMenu = YES;
     // Battery ends at its controls; System and Storage are one tab away and
     // are no longer echoed here. Summary values stay detached for the menu.
     for (NSInteger i = 0; i < 3; i++) {
@@ -417,7 +459,7 @@ static void Redisplay(NSView *view) {
     _swap = Label(_systemPage, NSMakeRect(146,334,108,20), @"Swap —", 12, NO);
     _pressure = Label(_systemPage,NSMakeRect(24,419,260,18),@"Memory pressure: —",11,NO);
     _pressure.toolTip = @"macOS memory pressure, separate from the percentage of RAM used";
-    WattButton *history = Button(_systemPage,NSMakeRect(296,415,80,25),@"History ›",@"",self,@selector(history:));
+    WattButton *history = Button(_systemPage,NSMakeRect(307,415,80,25),@"History ›",@"",self,@selector(history:));
     history.plain = YES;
     _swap.toolTip = @"Current system swap used, not swap-file capacity or RAM usage";
     _processCount = Label(_systemPage, NSMakeRect(24,334,108,20), @"", 12, NO);
@@ -459,6 +501,7 @@ static void Redisplay(NSView *view) {
         WattButton *palette = Button(_settingsPage,NSMakeRect(24+i*72,344,64,30),
             palettes[i],@"",self,@selector(palette:));
         palette.tag = i; palette.grouped = YES; [_paletteButtons addObject:palette];
+        palette.swatch = WattPaletteSwatch(palettes[i]);
         palette.hidden = [palettes[i] isEqual:@"Glass"] && !WattGlassAvailable();
     }
     [self line:_settingsPage y:326];
@@ -502,6 +545,17 @@ static void Redisplay(NSView *view) {
     [self.controller applyMonitoringPreferences];
 }
 - (void)settings:(id)sender { (void)sender; _settings = !_settings; [self selectPage]; }
+// ⌘1/⌘2/⌘3 switch tabs and ⌘, toggles Settings while the popover has focus.
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+    if ((event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask) != NSEventModifierFlagCommand)
+        return [super performKeyEquivalent:event];
+    NSString *key = event.charactersIgnoringModifiers;
+    if ([key isEqual:@"1"]) { [self battery:nil]; return YES; }
+    if ([key isEqual:@"2"]) { [self system:nil]; return YES; }
+    if ([key isEqual:@"3"]) { [self storage:nil]; return YES; }
+    if ([key isEqual:@","]) { [self settings:nil]; return YES; }
+    return [super performKeyEquivalent:event];
+}
 - (void)palette:(NSButton *)sender {
     [NSUserDefaults.standardUserDefaults setObject:@[@"Blue",@"Mint",@"Violet",@"Amber",@"Glass"][sender.tag]
         forKey:@"WattNookPalette"];
