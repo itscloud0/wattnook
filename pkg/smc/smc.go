@@ -102,17 +102,23 @@ func (c *AppleSMC) Write(key string, value []byte) error {
 	logrus.WithFields(logrus.Fields{
 		"key": key,
 		"val": value,
-	}).Trace("Trying to write to SMC")
+	}).Debug("Trying to write to SMC")
 
 	err := c.conn.WriteBytes(key, value)
 	if err != nil {
+		logrus.WithFields(logrus.Fields{
+			"key":     key,
+			"val":     value,
+			"success": false,
+		}).WithError(err).Error("SMC write failed")
 		return err
 	}
 
 	logrus.WithFields(logrus.Fields{
-		"key": key,
-		"val": value,
-	}).Trace("Write to SMC succeed")
+		"key":     key,
+		"val":     value,
+		"success": true,
+	}).Debug("SMC write succeeded")
 
 	return nil
 }
@@ -122,15 +128,21 @@ func (c *AppleSMC) WriteUint32(key string, value uint32) error {
 	logrus.WithFields(logrus.Fields{
 		"key": key,
 		"val": value,
-	}).Trace("Trying to write uint32 to SMC")
+	}).Debug("Trying to write uint32 to SMC")
 
 	if err := c.conn.WriteUint32(key, value); err != nil {
+		logrus.WithFields(logrus.Fields{
+			"key":     key,
+			"val":     value,
+			"success": false,
+		}).WithError(err).Error("SMC uint32 write failed")
 		return err
 	}
 
 	logrus.WithFields(logrus.Fields{
-		"key": key,
-		"val": value,
-	}).Trace("Write uint32 to SMC succeeded")
+		"key":     key,
+		"val":     value,
+		"success": true,
+	}).Debug("SMC uint32 write succeeded")
 	return nil
 }

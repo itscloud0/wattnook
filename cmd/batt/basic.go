@@ -44,7 +44,7 @@ func NewLimitCommand() *cobra.Command {
 		GroupID: gBasic,
 		Long: `Set upper charge limit.
 
-This is a percentage from 10 to 100.
+On supported SMC backends this is a percentage from 10 to 100. Apple's native backend accepts only the values advertised by /compatibility (typically 80, 85, 90, 95 and 100).
 
 Setting the limit to 10-99 will enable the battery charge limit. However, setting the limit to 100 will disable the battery charge limit, which is the default behavior of macOS.`,
 		RunE: func(_ *cobra.Command, args []string) error {

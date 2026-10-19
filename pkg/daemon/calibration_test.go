@@ -24,6 +24,7 @@ type mockConf struct {
 	preDisableLimit     int
 	adapterDisableUntil time.Time
 	heatProtection      bool
+	thermalAdapter      bool
 	heatPause           float64
 	heatResume          float64
 }
@@ -67,8 +68,10 @@ func (m *mockConf) AdapterDisableUntil() time.Time { return m.adapterDisableUnti
 func (m *mockConf) SetAdapterDisableTimer(until time.Time) {
 	m.adapterDisableUntil = until
 }
-func (m *mockConf) ClearAdapterDisableTimer()   { m.adapterDisableUntil = time.Time{} }
-func (m *mockConf) HeatProtectionEnabled() bool { return m.heatProtection }
+func (m *mockConf) ClearAdapterDisableTimer()       { m.adapterDisableUntil = time.Time{} }
+func (m *mockConf) HeatProtectionEnabled() bool     { return m.heatProtection }
+func (m *mockConf) ThermalAdapterEnabled() bool     { return m.thermalAdapter }
+func (m *mockConf) SetThermalAdapterEnabled(v bool) { m.thermalAdapter = v }
 func (m *mockConf) HeatPauseTemperatureCelsius() float64 {
 	if m.heatPause == 0 {
 		return 35

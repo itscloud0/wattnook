@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -25,12 +26,15 @@ type menuController struct {
 	heatPaused              bool
 	temperatureCelsius      float64
 	capabilities            compatibility.Capabilities
+	nativeLimit             int
+	nativeLimitPending      bool
 	compatibilityKnown      bool
 	disableScheduled        bool
 	adapterDisableScheduled bool
 	adapterEnabled          bool
 	adapterKnown            bool
 	eventCancel             context.CancelFunc
+	storage                 *storageAdapter
 }
 
 func (c *menuController) onWillOpen() {
@@ -133,10 +137,15 @@ func (c *menuController) refreshOnOpen() {
 	}
 
 	c.calibrationThreshold = conf.CalibrationDischargeThreshold()
-	c.menu.setTitle(itemCurrentLimit, fmt.Sprintf("Current Limit: %d%%", conf.UpperLimit()))
-	c.menu.setLimit(conf.UpperLimit())
+	limit := conf.UpperLimit()
+	if capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+		limit = c.nativeLimit
+		c.requestNativeLimit()
+	}
+	c.menu.setTitle(itemCurrentLimit, fmt.Sprintf("Current Limit: %d%%", limit))
+	c.menu.setLimit(limit)
 	for _, item := range quickLimitItems {
-		c.menu.setChecked(item, quickLimitForItem(item) == conf.UpperLimit())
+		c.menu.setChecked(item, quickLimitForItem(item) == limit)
 	}
 
 	state := "Not Charging"
@@ -162,7 +171,7 @@ func (c *menuController) refreshOnOpen() {
 		}
 		c.updateHeatProtection(conf, heat)
 	}
-	c.menu.setLiveStatus(currentCharge, isPluggedIn, batteryInfo.State == powerinfo.Charging, c.heatPaused)
+	c.menu.setHeatStatus(c.heatPaused, c.temperatureCelsius)
 
 	c.updateMagSafeChecks(conf.ControlMagSafeLED())
 	c.menu.setChecked(itemPreventIdleSleep, conf.PreventIdleSleep())
@@ -181,6 +190,10 @@ func (c *menuController) refreshOnOpen() {
 }
 
 func (c *menuController) refreshDisableSchedules() {
+	if c.capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+		c.requestNativeLimit()
+		return
+	}
 	rawConfig, err := c.api.GetConfig()
 	if err != nil {
 		logrus.WithError(err).Debug("Failed to refresh temporary disable schedule")
@@ -195,6 +208,9 @@ func (c *menuController) refreshDisableSchedules() {
 }
 
 func (c *menuController) updateDisableSchedules(conf config.Config) {
+	if c.capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+		return
+	}
 	c.updateDisableSchedule(conf)
 	c.updateAdapterDisableSchedule(conf)
 }
@@ -265,7 +281,12 @@ func (c *menuController) setCompatibility(installed bool, capabilities compatibi
 	if value := os.Getenv("BATT_GUI_NO_COMPATIBILITY_CHECK"); value == "1" || value == "true" {
 		return
 	}
+	if capabilities.ChargeControlMode == compatibility.ChargeControlNative && c.capabilities.ChargeControlMode != compatibility.ChargeControlNative {
+		c.nativeLimit = -1
+		c.menu.setLimit(-1)
+	}
 	c.capabilities = capabilities
+	c.menu.setLimitChoices(capabilities.SupportedLimits)
 	c.menu.setStatusIcon(installed, capabilities.ChargingControl, needsUpgrade)
 
 	usable := installed && capabilities.ChargingControl && !needsUpgrade
@@ -277,7 +298,8 @@ func (c *menuController) setCompatibility(installed bool, capabilities compatibi
 	c.menu.setHidden(itemCurrentLimit, !installed || !capabilities.ChargingControl)
 	c.menu.setHidden(itemQuickLimits, !usable)
 	for _, item := range quickLimitItems {
-		c.menu.setHidden(item, !usable)
+		c.menu.setHidden(item, !usable || !supportsQuickLimit(capabilities, quickLimitForItem(item)))
+		c.menu.setEnabled(item, usable && supportsQuickLimit(capabilities, quickLimitForItem(item)))
 	}
 
 	c.menu.setHidden(itemAdvanced, !installed)
@@ -285,11 +307,11 @@ func (c *menuController) setCompatibility(installed bool, capabilities compatibi
 	c.menu.setHidden(itemPreventIdleSleep, !usable || !capabilities.SleepHooks)
 	c.menu.setHidden(itemDisableChargingPreSleep, !usable || !capabilities.SleepHooks)
 	c.menu.setHidden(itemPreventSystemSleep, !usable || !capabilities.SleepHooks)
-	c.menu.setHidden(itemHeatProtection, !usable)
+	c.menu.setHidden(itemHeatProtection, !usable || !capabilities.Supports(compatibility.FeatureHeatProtection))
 	c.menu.setHidden(itemForceDischarge, !usable || !capabilities.AdapterControl)
 	c.menu.setHidden(itemAutoCalibration, !usable || !capabilities.Calibration)
 	c.menu.setHidden(itemUninstall, !installed)
-	c.menu.setHidden(itemDisableLimit, !usable)
+	c.menu.setHidden(itemDisableLimit, !usable || capabilities.ChargeControlMode == compatibility.ChargeControlNative)
 	if installed {
 		c.menu.setTooltip(itemQuit, quitTooltipInstalled)
 	} else {
@@ -298,32 +320,27 @@ func (c *menuController) setCompatibility(installed bool, capabilities compatibi
 }
 
 func (c *menuController) updateTelemetry() {
-	telemetry, err := c.api.GetTelemetry(true, true)
+	// Native snapshots own power and connection state. Do not overwrite them
+	// with independently timed daemon power/charge/connection requests.
+	heat, err := c.api.GetHeatProtection()
+	if err == nil && heat != nil {
+		c.heatPaused = heat.Paused
+		if heat.TemperatureCelsius != nil {
+			c.temperatureCelsius = *heat.TemperatureCelsius
+		}
+		c.menu.setHeatStatus(c.heatPaused, c.temperatureCelsius)
+		if c.capabilities.Supports(compatibility.FeatureHeatProtection) {
+			title, detail := heatProtectionPresentation(heat.Enabled, heat)
+			c.menu.setTitle(itemHeatProtection, title)
+			c.menu.setHeatDetail(detail)
+		}
+	}
+	telemetry, err := c.api.GetTelemetry(false, true)
 	if err != nil || telemetry == nil {
 		if err != nil {
 			logrus.WithError(err).Debug("GetTelemetry failed")
 		}
 		return
-	}
-	if telemetry.Power != nil {
-		calculations := telemetry.Power.Calculations
-		c.menu.setPower(itemPowerSystem, "System", calculations.SystemPower)
-		c.menu.setPower(itemPowerAdapter, "Adapter", calculations.ACPower)
-		c.menu.setPower(itemPowerBattery, "Battery", calculations.BatteryPower)
-		heat, err := c.api.GetHeatProtection()
-		if err == nil && heat != nil {
-			c.heatPaused = heat.Paused
-			if heat.TemperatureCelsius != nil {
-				c.temperatureCelsius = *heat.TemperatureCelsius
-			}
-		}
-		c.menu.setPowerFlow(calculations.ACPower, calculations.SystemPower, calculations.BatteryPower, c.heatPaused, c.temperatureCelsius)
-		if charge, err := c.api.GetCurrentCharge(); err == nil {
-			pluggedIn, err := c.api.GetPluggedIn()
-			if err == nil {
-				c.menu.setLiveStatus(charge, pluggedIn, calculations.BatteryPower > 0.1, c.heatPaused)
-			}
-		}
 	}
 	if telemetry.Calibration != nil {
 		c.updateCalibration(telemetry.Calibration)
@@ -331,19 +348,48 @@ func (c *menuController) updateTelemetry() {
 }
 
 func (c *menuController) updateHeatProtection(conf config.Config, status *client.HeatProtectionStatus) {
-	c.menu.setChecked(itemHeatOff, !conf.HeatProtectionEnabled())
-	c.menu.setChecked(itemHeatStrict, conf.HeatProtectionEnabled() && conf.HeatPauseTemperatureCelsius() == 32 && conf.HeatResumeTemperatureCelsius() == 29)
-	c.menu.setChecked(itemHeatBalanced, conf.HeatProtectionEnabled() && conf.HeatPauseTemperatureCelsius() == 33 && conf.HeatResumeTemperatureCelsius() == 30)
-	c.menu.setChecked(itemHeatRelaxed, conf.HeatProtectionEnabled() && conf.HeatPauseTemperatureCelsius() == 35 && conf.HeatResumeTemperatureCelsius() == 32)
+	if !c.capabilities.Supports(compatibility.FeatureHeatProtection) {
+		c.heatPaused = false
+		c.menu.setTitle(itemHeatProtection, "Custom heat protection unavailable with Apple's native charge limit")
+		return
+	}
+	enabled := conf.HeatProtectionEnabled()
+	if status.Mechanism == "adapter" {
+		enabled = status.Enabled
+	}
+	c.menu.setChecked(itemHeatOff, !enabled)
+	c.menu.setChecked(itemHeatStrict, enabled && conf.HeatPauseTemperatureCelsius() == 32 && conf.HeatResumeTemperatureCelsius() == 29)
+	c.menu.setChecked(itemHeatBalanced, enabled && conf.HeatPauseTemperatureCelsius() == 33 && conf.HeatResumeTemperatureCelsius() == 30)
+	c.menu.setChecked(itemHeatRelaxed, enabled && conf.HeatPauseTemperatureCelsius() == 35 && conf.HeatResumeTemperatureCelsius() == 32)
+	title, detail := heatProtectionPresentation(enabled, status)
+	c.menu.setTitle(itemHeatProtection, title)
+	c.menu.setHeatDetail(detail)
+}
+
+func heatProtectionPresentation(enabled bool, status *client.HeatProtectionStatus) (string, string) {
+	if status.Fault || status.LastError != "" {
+		return "Heat Protection: stopped — " + status.LastError, "Stopped · see details"
+	}
+	if !enabled {
+		if status.Mechanism == "adapter" {
+			return "Heat Protection: off — uses battery while hot; Apple limit stays active", "Off · temperature control"
+		}
+		return "Heat Protection: off", "Off · temperature control"
+	}
 	if status.Paused {
-		c.menu.setTitle(itemHeatProtection, fmt.Sprintf("Heat Protection: paused (%.1f°C)", c.temperatureCelsius))
-		return
+		if status.Mechanism == "adapter" {
+			return "Heat Protection: cooling — running on battery", "Cooling · battery power"
+		}
+		return "Heat Protection: charging paused", "Cooling · charge paused"
 	}
-	if conf.HeatProtectionEnabled() {
-		c.menu.setTitle(itemHeatProtection, fmt.Sprintf("Heat Protection: on (%.0f°C → %.0f°C)", conf.HeatPauseTemperatureCelsius(), conf.HeatResumeTemperatureCelsius()))
-		return
+	if status.ReserveBlocked {
+		return "Heat Protection: low battery — adapter restored; re-arms above 25%", "Low battery · AC restored"
 	}
-	c.menu.setTitle(itemHeatProtection, "Heat Protection: off")
+	title := fmt.Sprintf("Heat Protection: on (%.0f°C → %.0f°C)", status.PauseTemperatureCelsius, status.ResumeTemperatureCelsius)
+	if status.Mechanism == "adapter" {
+		title += " — uses battery while hot"
+	}
+	return title, fmt.Sprintf("On · %.0f° / %.0f°", status.PauseTemperatureCelsius, status.ResumeTemperatureCelsius)
 }
 
 func (c *menuController) updateCalibration(status *calibration.Status) {
@@ -373,12 +419,47 @@ func (c *menuController) updateCalibration(status *calibration.Status) {
 		c.menu.setEnabled(item, settingsEnabled)
 	}
 	for _, item := range quickLimitItems {
-		c.menu.setEnabled(item, canSetChargeLimit(status.Phase))
+		c.menu.setEnabled(item, canSetChargeLimit(status.Phase) && supportsQuickLimit(c.capabilities, quickLimitForItem(item)))
 	}
 	// A persisted conflict may contain both states after a restart. Keep the
 	// submenu openable only to show its countdown; its actions remain disabled.
 	c.menu.setEnabled(itemDisableLimit, canOpenDisableLimitMenu(status.Phase, c.disableScheduled))
 	c.updateForceDischargeControls()
+}
+
+func supportsQuickLimit(c compatibility.Capabilities, limit int) bool {
+	return c.ChargeControlMode != compatibility.ChargeControlNative || slices.Contains(c.SupportedLimits, limit)
+}
+
+// The private framework's RPC may stall. Never wait for native reads/writes on
+// AppKit's main thread, and never queue a second operation behind a pending one.
+func (c *menuController) requestNativeLimit() {
+	if c.nativeLimitPending {
+		return
+	}
+	c.nativeLimitPending = true
+	go func() {
+		limit, err := c.api.GetLimit()
+		if err != nil {
+			limit = -1
+		}
+		runOnMain(func() { c.nativeLimitPending = false; c.applyNativeLimit(limit) })
+	}()
+}
+
+func (c *menuController) applyNativeLimit(limit int) {
+	if c.capabilities.ChargeControlMode != compatibility.ChargeControlNative {
+		return
+	}
+	c.nativeLimit = limit
+	c.menu.setTitle(itemCurrentLimit, fmt.Sprintf("Apple limit: %d%%", limit))
+	if limit < 0 {
+		c.menu.setTitle(itemCurrentLimit, "Apple limit unavailable")
+	}
+	for _, item := range quickLimitItems {
+		c.menu.setChecked(item, quickLimitForItem(item) == limit)
+	}
+	c.menu.setLimit(limit)
 }
 
 func canStartCalibration(phase calibration.Phase, disableScheduled, adapterDisableScheduled bool) bool {

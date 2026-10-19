@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/charlie0129/batt/pkg/client"
+	"github.com/charlie0129/batt/pkg/compatibility"
 	"github.com/charlie0129/batt/pkg/config"
 )
 
@@ -104,6 +105,30 @@ func (c *menuController) installOrUpgrade() {
 }
 
 func (c *menuController) setLimit(limit int) bool {
+	if c.capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+		if c.nativeLimitPending {
+			return false
+		}
+		c.nativeLimitPending = true
+		c.applyNativeLimit(-1)
+		go func() {
+			_, writeErr := c.api.SetLimit(limit)
+			actual, readErr := c.api.GetLimit()
+			if readErr != nil {
+				actual = -1
+			}
+			runOnMain(func() {
+				c.nativeLimitPending = false
+				c.applyNativeLimit(actual)
+				if writeErr != nil {
+					showAlert("Apple charge limit not confirmed", writeErr.Error())
+				} else if readErr != nil {
+					showAlert("Apple charge limit unavailable", readErr.Error())
+				}
+			})
+		}()
+		return true // accepted, not confirmed; the rail stays unavailable until readback
+	}
 	response, err := c.api.SetLimit(limit)
 	if err != nil {
 		logrus.WithError(err).Error("Failed to set limit")

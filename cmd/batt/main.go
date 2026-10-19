@@ -192,7 +192,13 @@ Report issues: https://github.com/charlie0129/batt/issues`,
 		defaultHelp(selected, args)
 	})
 
-	if os.Getenv("BATT_RUN_GUI") != "" || path.Base(os.Args[0]) == "batt-gui" {
+	// Launch the app's Mach-O directly. A shell launcher followed by exec
+	// changes the process identity and breaks status-item scenes on macOS 27.
+	nativeApp := path.Base(os.Args[0]) == "WattNook"
+	if nativeApp {
+		unixSocketPath = "/var/run/batt-thermal.sock"
+	}
+	if nativeApp || os.Getenv("BATT_RUN_GUI") != "" || path.Base(os.Args[0]) == "batt-gui" {
 		cmd.Run = func(_ *cobra.Command, _ []string) {
 			gui.Run(unixSocketPath)
 		}
@@ -218,6 +224,8 @@ Report issues: https://github.com/charlie0129/batt/issues`,
 	}
 
 	cmd.AddCommand(
+		NewThermalGuardianCommand(),
+		NewStorageReviewCommand(),
 		NewDaemonCommand(),
 		NewVersionCommand(),
 		NewLimitCommand(),

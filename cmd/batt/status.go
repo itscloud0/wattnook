@@ -84,6 +84,16 @@ func fetchStatusData() (*statusData, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get config: %w", err)
 	}
+	if capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+		limit, err := apiClient.GetLimit()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read Apple charge limit: %w", err)
+		}
+		// Presentation only: never persist the historical SMC configuration.
+		zero, disabled := 0, false
+		conf.Limit, conf.LowerLimitDelta, conf.HeatProtectionEnabled = &limit, &zero, &disabled
+		conf.DisableUntil, conf.PreDisableLimit, conf.AdapterDisableUntil = nil, nil, nil
+	}
 
 	charging := false
 	if capabilities.ChargeControlMode == compatibility.ChargeControlLegacy {
@@ -144,6 +154,10 @@ func NewStatusCommand() *cobra.Command {
 			cmd.Println(bold("Charging status:"))
 
 			switch data.capabilities.ChargeControlMode {
+			case compatibility.ChargeControlNative:
+				cmd.Println("  Control mode: " + bold("Apple native"))
+				cmd.Println("  Charge limit active: " + bool2Text(cfg.UpperLimit() < 100))
+				cmd.Println("    macOS manages charging, including occasional full charges for battery estimation.")
 			case compatibility.ChargeControlFirmware:
 				cmd.Println("  Control mode: " + bold("firmware-managed"))
 				cmd.Println("  Charge limit active: " + bool2Text(cfg.UpperLimit() < 100))
@@ -241,7 +255,9 @@ func NewStatusCommand() *cobra.Command {
 
 			// Config.
 			cmd.Println(bold("Battery configuration:"))
-			if cfg.UpperLimit() < 100 {
+			if data.capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+				cmd.Printf("  Apple charge limit: %s\n", bold("%d%%", cfg.UpperLimit()))
+			} else if cfg.UpperLimit() < 100 {
 				cmd.Printf("  Upper limit: %s\n", bold("%d%%", cfg.UpperLimit()))
 				cmd.Printf("  Lower limit: %s\n", bold("%d%%", cfg.LowerLimit()))
 			} else {
@@ -258,7 +274,9 @@ func NewStatusCommand() *cobra.Command {
 				cmd.Println("  Legacy sleep controls: " + bold("unsupported/not required"))
 			}
 			cmd.Printf("  Allow non-root users to access the daemon: %s\n", bool2Text(cfg.AllowNonRootAccess()))
-			if cfg.HeatProtectionEnabled() {
+			if data.capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+				cmd.Println("  Custom heat protection: unavailable with Apple native limits")
+			} else if cfg.HeatProtectionEnabled() {
 				state := "monitoring"
 				if data.heatProtection != nil && data.heatProtection.Paused {
 					state = "charging paused"

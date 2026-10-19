@@ -2,6 +2,7 @@ package smc
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 
 	"github.com/charlie0129/gosmc"
@@ -168,5 +169,34 @@ func TestLegacyChargingBehavior(t *testing.T) {
 	}
 	if !enabled {
 		t.Fatal("charging should be enabled")
+	}
+}
+
+func TestChargingStateRejectsMalformedReads(t *testing.T) {
+	for _, modern := range []bool{false, true} {
+		t.Run(fmt.Sprintf("modern=%t", modern), func(t *testing.T) {
+			values := []gosmc.Value{
+				smcValue(t, ChargingKey1, gosmc.DataType("hex_"), 0, 0),
+				smcValue(t, ChargingKey2, gosmc.TypeUInt8, 0),
+			}
+			if modern {
+				values = []gosmc.Value{smcValue(t, ChargingKey3, gosmc.DataType("hex_"), 0, 0, 0)}
+			}
+			client := openMockSMC(t, values...)
+			if _, err := client.IsChargingEnabled(); err == nil {
+				t.Fatal("malformed charging state must return an error, not disabled")
+			}
+		})
+	}
+}
+
+func TestAdapterStateRejectsMalformedReads(t *testing.T) {
+	for _, key := range []string{AdapterKey1, AdapterKey2, AdapterKey3} {
+		t.Run(key, func(t *testing.T) {
+			client := openMockSMC(t, smcValue(t, key, gosmc.DataType("hex_"), 0, 0))
+			if _, err := client.IsAdapterEnabled(); err == nil {
+				t.Fatal("malformed adapter state must return an error, not disabled")
+			}
+		})
 	}
 }

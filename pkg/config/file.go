@@ -132,6 +132,7 @@ type RawFileConfig struct {
 	AdapterDisableUntil *time.Time `json:"adapterDisableUntil,omitempty"`
 
 	HeatProtectionEnabled        *bool    `json:"heatProtectionEnabled,omitempty"`
+	ThermalAdapterEnabled        *bool    `json:"thermalAdapterEnabled,omitempty"`
 	HeatPauseTemperatureCelsius  *float64 `json:"heatPauseTemperatureCelsius,omitempty"`
 	HeatResumeTemperatureCelsius *float64 `json:"heatResumeTemperatureCelsius,omitempty"`
 }
@@ -150,6 +151,7 @@ func NewRawFileConfigFromConfig(c Config) (*RawFileConfig, error) {
 		LowerLimitDelta:              ptr.To(c.UpperLimit() - c.LowerLimit()),
 		ControlMagSafeLED:            ptr.To(c.ControlMagSafeLED()),
 		HeatProtectionEnabled:        ptr.To(c.HeatProtectionEnabled()),
+		ThermalAdapterEnabled:        ptr.To(c.ThermalAdapterEnabled()),
 		HeatPauseTemperatureCelsius:  ptr.To(c.HeatPauseTemperatureCelsius()),
 		HeatResumeTemperatureCelsius: ptr.To(c.HeatResumeTemperatureCelsius()),
 		Cron:                         ptr.To(c.Cron()),
@@ -590,6 +592,19 @@ func (f *File) HeatProtectionEnabled() bool {
 		return *f.c.HeatProtectionEnabled
 	}
 	return *defaultFileConfig.HeatProtectionEnabled
+}
+
+// An older heat preference must not silently opt into wall-power switching.
+func (f *File) ThermalAdapterEnabled() bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.c != nil && f.c.ThermalAdapterEnabled != nil && *f.c.ThermalAdapterEnabled
+}
+
+func (f *File) SetThermalAdapterEnabled(enabled bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.c.ThermalAdapterEnabled = ptr.To(enabled)
 }
 
 func (f *File) HeatPauseTemperatureCelsius() float64 {

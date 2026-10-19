@@ -102,6 +102,42 @@ func TestDisableUnsupportedConfiguredFeatures(t *testing.T) {
 	}
 }
 
+func TestNativeStartupDisablesRetiredHeatModeWithoutChangingThresholds(t *testing.T) {
+	setupNativeFixture(t)
+	file, err := config.NewFile(t.TempDir() + "/config.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf = file
+	file.SetHeatProtection(true, 33, 30)
+	file.SetThermalAdapterEnabled(true)
+	disableUnsupportedConfiguredFeatures()
+	if file.HeatProtectionEnabled() || file.ThermalAdapterEnabled() ||
+		file.HeatPauseTemperatureCelsius() != 33 || file.HeatResumeTemperatureCelsius() != 30 {
+		t.Fatal("retired adapter mode or saved temperature settings not handled correctly")
+	}
+	if len(nativeCharge.(*nativeFixture).writes) != 0 {
+		t.Fatal("disabling retired heat mode changed Apple charge limit")
+	}
+	if err := file.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if file.HeatProtectionEnabled() || file.ThermalAdapterEnabled() {
+		t.Fatal("retired adapter flags were not persisted as disabled")
+	}
+}
+
+func TestFirmwareHeatProtectionRejectedWithoutWrites(t *testing.T) {
+	f := setupNativeFixture(t)
+	capabilities.ChargeControlMode = compatibility.ChargeControlFirmware
+	w := httptest.NewRecorder()
+	setupRoutes().ServeHTTP(w, httptest.NewRequest("PUT", "/heat-protection",
+		strings.NewReader(`{"enabled":true,"pauseTemperatureCelsius":33,"resumeTemperatureCelsius":30}`)))
+	if w.Code != http.StatusConflict || len(f.writes) != 0 {
+		t.Fatalf("firmware advertised a thermal gate it never executes: %d %s", w.Code, w.Body.String())
+	}
+}
+
 func TestDisableUnsupportedCalibrationRestoresLimits(t *testing.T) {
 	path := t.TempDir() + "/batt.json"
 	file, err := config.NewFile(path)

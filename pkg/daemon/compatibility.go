@@ -14,6 +14,12 @@ import (
 
 func detectCapabilities() compatibility.Capabilities {
 	mode := smcConn.ChargeControlMode()
+	if mode == compatibility.ChargeControlUnsupported && nativeCharge != nil {
+		if state, err := nativeCharge.Read(); err == nil {
+			return compatibility.Capabilities{ChargingControl: true, ChargeControlMode: compatibility.ChargeControlNative, SupportedLimits: state.Limits,
+				ThermalAdapter: smcConn.HasKey("CHIE")}
+		}
+	}
 	legacy := mode == compatibility.ChargeControlLegacy
 	adapter := smcConn.IsAdapterControlCapable()
 	return compatibility.Capabilities{
@@ -28,6 +34,14 @@ func detectCapabilities() compatibility.Capabilities {
 		// firmware backends can temporarily allow charging to 100%.
 		Calibration: mode != compatibility.ChargeControlUnsupported && adapter,
 	}
+}
+
+func rejectNativeOperation(c *gin.Context) bool {
+	if capabilities.ChargeControlMode != compatibility.ChargeControlNative {
+		return false
+	}
+	c.AbortWithStatusJSON(http.StatusConflict, "This operation is unavailable with Apple's native charge limit")
+	return true
 }
 
 func capabilityLogFields(capabilities compatibility.Capabilities) logrus.Fields {
@@ -72,6 +86,12 @@ func disableUnsupportedCalibrationState() {
 // hardware. It intentionally persists the disabled values.
 func disableUnsupportedConfiguredFeatures() {
 	changed := false
+	if !capabilities.Supports(compatibility.FeatureHeatProtection) &&
+		(conf.HeatProtectionEnabled() || conf.ThermalAdapterEnabled()) {
+		conf.SetHeatProtection(false, conf.HeatPauseTemperatureCelsius(), conf.HeatResumeTemperatureCelsius())
+		conf.SetThermalAdapterEnabled(false)
+		changed = true
+	}
 	if !capabilities.SleepHooks {
 		if conf.PreventIdleSleep() {
 			conf.SetPreventIdleSleep(false)

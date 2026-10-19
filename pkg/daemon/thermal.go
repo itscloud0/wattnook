@@ -5,11 +5,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charlie0129/batt/pkg/compatibility"
 	"github.com/peterneutron/powerkit-go/pkg/powerkit"
 )
 
-// HeatProtectionStatus is the last sensor result and gate state. The gate only
-// inhibits battery charging; it deliberately does not disable the power adapter.
+// HeatProtectionStatus reports the last sensor result and observed control state.
+// Mechanism distinguishes direct charge inhibition from native thermal adapter use.
 type HeatProtectionStatus struct {
 	Enabled                  bool      `json:"enabled"`
 	Paused                   bool      `json:"paused"`
@@ -18,6 +19,13 @@ type HeatProtectionStatus struct {
 	ResumeTemperatureCelsius float64   `json:"resumeTemperatureCelsius"`
 	LastError                string    `json:"lastError,omitempty"`
 	UpdatedAt                time.Time `json:"updatedAt"`
+	Mechanism                string    `json:"mechanism,omitempty"`
+	Requested                string    `json:"requested,omitempty"`
+	Observed                 string    `json:"observed,omitempty"`
+	Reason                   string    `json:"reason,omitempty"`
+	Fault                    bool      `json:"fault"`
+	ReserveBlocked           bool      `json:"reserveBlocked"`
+	LastTransition           time.Time `json:"lastTransition,omitempty"`
 }
 
 var (
@@ -36,6 +44,9 @@ var (
 )
 
 func getHeatProtectionStatus() HeatProtectionStatus {
+	if capabilities.ChargeControlMode == compatibility.ChargeControlNative && !capabilities.ThermalAdapter {
+		return HeatProtectionStatus{LastError: "Custom heat protection unavailable with Apple's native charge limit", UpdatedAt: time.Now()}
+	}
 	heatProtectionMu.RLock()
 	defer heatProtectionMu.RUnlock()
 

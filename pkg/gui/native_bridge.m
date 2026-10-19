@@ -8,6 +8,18 @@ static BattMenuController *BattController(BattMenuRef menu) {
     return (BattMenuController *)menu;
 }
 
+void batt_dispatch_main(uintptr_t callback) {
+    dispatch_async(dispatch_get_main_queue(), ^{ battMainCallback(callback); });
+}
+
+void batt_menu_storage_update(BattMenuRef menu, uint64_t generation, const char *json) {
+    @autoreleasepool {
+        NSData *data=[BattString(json) dataUsingEncoding:NSUTF8StringEncoding];
+        id value=[NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        if ([value isKindOfClass:NSDictionary.class]) WattUpdateStorageReview(BattController(menu),generation,value);
+    }
+}
+
 BattMenuRef batt_menu_create(uintptr_t handle, const char *version) {
     @autoreleasepool {
         [NSApplication sharedApplication];
@@ -75,6 +87,15 @@ void batt_menu_set_power(BattMenuRef menu, int item, const char *label, double v
     }
 }
 
+void batt_menu_set_heat_status(BattMenuRef menu, bool paused, double temperature_celsius) {
+    BattController(menu).powerFlowView.heatPaused = paused;
+    BattController(menu).powerFlowView.temperatureCelsius = temperature_celsius;
+}
+
+void batt_menu_set_heat_detail(BattMenuRef menu, const char *detail) {
+    @autoreleasepool { BattController(menu).heatDetail = BattString(detail); }
+}
+
 void batt_menu_set_power_flow(BattMenuRef menu,
                               double adapter,
                               double system,
@@ -93,6 +114,14 @@ void batt_menu_set_power_flow(BattMenuRef menu,
 void batt_menu_set_limit(BattMenuRef menu, int limit_percent) {
     @autoreleasepool {
         [BattController(menu) setLimitPercent:limit_percent];
+    }
+}
+
+void batt_menu_set_limit_choices(BattMenuRef menu, const int *values, int count) {
+    @autoreleasepool {
+        NSMutableArray *limits = [NSMutableArray array];
+        for (int i=0; i<count; i++) [limits addObject:@(values[i])];
+        BattController(menu).powerFlowView.supportedLimits = limits.count ? limits : nil;
     }
 }
 

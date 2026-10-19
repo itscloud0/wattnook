@@ -60,8 +60,12 @@ func NewHeatProtectionCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "heat-protection",
 		GroupID: gAdvanced,
-		Short:   "Pause battery charging while the battery is hot without disabling AC power",
-		Long: `Heat protection inhibits battery charging above a temperature threshold while keeping the power adapter enabled.
+		Short:   "Pause charging above your chosen battery temperature",
+		Long: `Heat protection pauses charging above a temperature threshold.
+
+It requires a verified battery-charge inhibition backend that retains adapter power.
+Custom heat protection is unavailable with Apple's native charge-limit backend;
+the former adapter-disconnection mode is not a substitute. Apple's charge limit stays active.
 
 Charging resumes only after the battery cools below the resume temperature. This hysteresis prevents rapid on/off switching.`,
 	}

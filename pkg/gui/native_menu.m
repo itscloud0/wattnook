@@ -83,11 +83,21 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
                                                   repeats:YES] retain];
         _timer.tolerance = 1.0;
         [self applyMonitoringPreferences];
+        BattUpdateBattery(self);
     }
     return self;
 }
 
+- (void)showStorageReview:(id)sender { WattShowStorageReview(self); }
+
 - (void)dealloc {
+    WattSetStorageReviewActive(self,NO);
+    [_storageView release];
+    [_awakeDetailsWindow close];
+    [_awakeDetailsWindow release];
+    [_awakeBlockerReport release];
+    [_awakeSnapshotDate release];
+    [_heatDetail release];
     [_timer invalidate];
     [_timer release];
     [_statsTimer invalidate];
@@ -96,6 +106,8 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     [[NSStatusBar systemStatusBar] removeStatusItem:_statusItem];
     [_statusItem release];
     [_batteryIcon release];
+    [_batteryColorView removeFromSuperview];
+    [_batteryColorView release];
     [_powerFlowView release];
     [_popover release];
     [_chargeButton release];
@@ -185,6 +197,7 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
 - (void)menuWillOpen:(NSMenu *)menu {
     if (menu == self.menu) [self updateDiagnosticMenus];
     battMenuWillOpen(_handle);
+    BattUpdateBattery(self);
 }
 
 - (void)buildPopover {
@@ -199,6 +212,7 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     if (event.type == NSEventTypeRightMouseUp) {
         [self.popover close];
         battMenuWillOpen(_handle);
+        BattUpdateBattery(self);
         [self updateDiagnosticMenus];
         [self showMenu:self.menu fromButton:self.statusItem.button];
         return;
@@ -209,6 +223,7 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     }
     battMenuWillOpen(_handle);
     if (self.systemPageVisible) [self updateAppStats];
+    BattUpdateBattery(self);
     [self refreshPopoverControls];
     [NSApp activateIgnoringOtherApps:YES];
     [self.popover showRelativeToRect:self.statusItem.button.bounds
@@ -219,11 +234,13 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
 - (void)popoverDidShow:(NSNotification *)notification {
     (void)notification;
     self.powerFlowView.flowAnimationEnabled = !self.powerFlowView.hiddenOrHasHiddenAncestor;
+    WattSetStorageReviewActive(self,!self.storageView.hiddenOrHasHiddenAncestor);
 }
 
 - (void)popoverDidClose:(NSNotification *)notification {
     (void)notification;
     self.powerFlowView.flowAnimationEnabled = NO;
+    WattSetStorageReviewActive(self,NO);
     self.previousProcessCPU = nil; self.previousProcessDisk = nil;
     _previousProcessSampleTime = 0;
 }
@@ -267,23 +284,32 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
 
 - (void)showKeepAwakeDiagnostics:(id)sender {
     (void)sender;
+    WattShowAwakeDetails(self);
+}
+
+- (void)refreshKeepAwakeDiagnostics:(id)sender {
+    (void)sender;
+    if (!self.awakeDetailsWindow || self.awakeDiagnosticsLoading) return;
+    self.awakeDiagnosticsLoading = YES;
+    self.keepAwakeStatusTime = 0;
     [self isKeepAwakeActive];
-    NSString *report = WattAwakeReport(self);
-    NSAlert *alert = [[[NSAlert alloc] init] autorelease];
-    alert.messageText = @"Keep Awake diagnostics";
-    alert.informativeText = @"Last 64 local events: sleep-setting changes and display-guard activity. No network or input data.";
-    NSScrollView *scroll = [[[NSScrollView alloc] initWithFrame:NSMakeRect(0,0,480,280)] autorelease];
-    scroll.hasVerticalScroller = YES;
-    NSTextView *text = [[[NSTextView alloc] initWithFrame:scroll.bounds] autorelease];
-    text.editable = NO; text.selectable = YES; text.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
-    text.string = report; text.verticallyResizable = YES;
-    text.textContainer.widthTracksTextView = YES;
-    scroll.documentView = text; alert.accessoryView = scroll;
-    [alert addButtonWithTitle:@"Close"]; [alert addButtonWithTitle:@"Copy report"];
-    if ([alert runModal] == NSAlertSecondButtonReturn) {
-        [NSPasteboard.generalPasteboard clearContents];
-        [NSPasteboard.generalPasteboard setString:report forType:NSPasteboardTypeString];
-    }
+    WattRefreshAwakeDetails(self);
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0), ^{
+        @autoreleasepool {
+            NSString *blockers = WattSleepBlockerReport();
+            NSDate *sampledAt = [NSDate date];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                self.awakeDiagnosticsLoading = NO;
+                // Closing the window drops its process snapshot. A late result must
+                // never reopen it; a reopened window may share the in-flight query.
+                if (self.awakeDetailsWindow) {
+                    self.awakeBlockerReport = blockers;
+                    self.awakeSnapshotDate = sampledAt;
+                    WattRefreshAwakeDetails(self);
+                }
+            });
+        }
+    });
 }
 
 - (void)toggleKeepAwakeFromPopover:(NSButton *)sender {
@@ -313,6 +339,7 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
 
 - (void)refreshPopoverControls {
     BattRefreshPopover(self, _cpuPercent, _memoryPercent);
+    WattRefreshAwakeDetails(self);
 }
 
 
@@ -323,7 +350,7 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
 - (void)timerTick:(NSTimer *)timer {
     (void)timer;
     battMenuTimerFired(_handle);
-    if (!WattMonitoringEnabled()) BattUpdateBattery(self);
+    BattUpdateBattery(self);
     [self isKeepAwakeActive];
 }
 
@@ -398,7 +425,6 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     self.swapUsedBytes = sysctlbyname("vm.swapusage", &swap, &swapSize, NULL, 0) == 0 &&
         swapSize == sizeof(swap) ? (double)swap.xsu_used : -1;
     BattUpdateStorage(self);
-    BattUpdateBattery(self);
     _diskPercent = self.diskSpacePercent;
     if (self.metricHistory) {
         double watts = self.powerFlowView.systemWatts;
@@ -447,8 +473,9 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     CGFloat percentGap = percent && labels.count ? 10 : 0;
     CGFloat percentWidth = percent ? percentGap+ceil([charge sizeWithAttributes:chargeStyle].width)+4 : 0;
     CGFloat iconGap = icon && (labels.count || percent) ? 8 : 0;
+    CGFloat iconWidth = self.batteryIcon ? self.batteryIcon.size.width : 25;
     NSImage *combined = [[[NSImage alloc] initWithSize:
-        NSMakeSize(MAX(24,stackWidth+percentWidth+iconGap+(icon ? 26 : 0)),24)] autorelease];
+        NSMakeSize(MAX(24,stackWidth+percentWidth+iconGap+(icon ? iconWidth+1 : 0)),24)] autorelease];
     [combined lockFocus];
     CGFloat height = [@"100%" sizeWithAttributes:attributes].height;
     for (NSInteger i=0;i<labels.count;i++) {
@@ -458,22 +485,49 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     }
     if (percent) [charge drawAtPoint:NSMakePoint(stackWidth+percentGap,
         (24-[charge sizeWithAttributes:chargeStyle].height)/2) withAttributes:chargeStyle];
-    if (icon) [self.batteryIcon drawInRect:NSMakeRect(stackWidth+percentWidth+iconGap,5,25,14)
+    CGFloat iconHeight = self.batteryIcon ? self.batteryIcon.size.height : 14;
+    if (icon && !self.batteryIconHasColor) [self.batteryIcon drawInRect:NSMakeRect(stackWidth+percentWidth+iconGap,(24-iconHeight)/2,iconWidth,iconHeight)
         fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1];
     [combined unlockFocus];
+    // Template the final composition, not just its battery component: AppKit
+    // chooses contrast for the actual menu-bar backdrop and selected state.
+    combined.template = YES;
     self.statusItem.button.image = combined;
+    self.statusItem.button.contentTintColor = nil;
     self.statusItem.button.title = @"";
+    // Keep metrics and neutral glyphs system-template adaptive, while retaining
+    // Apple's actual red/yellow warning/Low Power artwork in a passive view.
+    if (icon && self.batteryIconHasColor) {
+        NSStatusBarButton *button = self.statusItem.button;
+        if (!self.batteryColorView) {
+            self.batteryColorView = WattCreateBatteryColorView();
+            [button addSubview:self.batteryColorView];
+        }
+        [button layoutSubtreeIfNeeded];
+        NSRect imageRect = [(NSButtonCell *)button.cell imageRectForBounds:button.bounds];
+        self.batteryColorView.frame = NSMakeRect(NSMinX(imageRect)+stackWidth+percentWidth+iconGap,
+            NSMidY(imageRect)-iconHeight/2, iconWidth, iconHeight);
+        self.batteryColorView.image = self.batteryIcon;
+        self.batteryColorView.hidden = NO;
+    } else {
+        self.batteryColorView.image = nil;
+        self.batteryColorView.hidden = YES;
+    }
     NSMutableArray *descriptions = [NSMutableArray arrayWithObject:@"WattNook"];
     for (NSInteger i=0;i<labels.count;i++)
         [descriptions addObject:[NSString stringWithFormat:@"%@ %@",
             [labels[i] isEqual:@"SSD"] ? @"SSD space used" : labels[i],values[i]]];
-    if (percent) [descriptions addObject:[@"Battery " stringByAppendingString:charge]];
+    if (percent && !self.statusItem.button.toolTip.length)
+        [descriptions addObject:[@"Battery " stringByAppendingString:charge]];
+    if (self.statusItem.button.toolTip.length)
+        [descriptions addObject:self.statusItem.button.toolTip];
     self.statusItem.button.accessibilityLabel = [descriptions componentsJoinedByString:@", "];
 }
 
 - (void)setStatusIconInstalled:(BOOL)installed
                        capable:(BOOL)capable
                   needsUpgrade:(BOOL)needsUpgrade {
+    self.batteryColorView.hidden = YES;
     NSString *symbol = @"minus.plus.batteryblock";
     NSString *description = @"batt icon";
     if (!installed) {
@@ -496,7 +550,14 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
                    pluggedIn:(BOOL)pluggedIn
                     charging:(BOOL)charging
                  heatPaused:(BOOL)heatPaused {
-    charge = MAX(0, MIN(100, charge));
+    [self setLiveStatusCharge:charge pluggedIn:pluggedIn charging:charging heatPaused:heatPaused
+        present:YES needsService:NO];
+}
+
+- (void)setLiveStatusCharge:(NSInteger)charge pluggedIn:(BOOL)pluggedIn charging:(BOOL)charging
+                heatPaused:(BOOL)heatPaused present:(BOOL)present needsService:(BOOL)needsService {
+    BOOL known = charge >= 0 && present;
+    charge = known ? MAX(0, MIN(100, charge)) : -1;
     NSBundle *controlCenter = [NSBundle bundleWithPath:@"/System/Library/CoreServices/ControlCenter.app"];
     NSImage *outline = [controlCenter imageForResource:@"battery-outline"];
     NSImage *cap = [controlCenter imageForResource:@"battery-cap"];
@@ -504,8 +565,10 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     NSImage *overlay = overlayName == nil ? nil : [controlCenter imageForResource:overlayName];
     NSImage *mask = overlayName == nil ? nil :
         [controlCenter imageForResource:[overlayName stringByAppendingString:@"-mask"]];
-    NSImage *image = nil;
-    if (outline != nil && cap != nil) {
+    BOOL lowPower = NSProcessInfo.processInfo.lowPowerModeEnabled;
+    NSImage *image = WattSystemMenuBattery(charge,pluggedIn,charging,present,needsService,lowPower);
+    BOOL nativeImage = image != nil;
+    if (!image && known && outline != nil && cap != nil) {
         image = [[[NSImage alloc] initWithSize:NSMakeSize(25, 14)] autorelease];
         [image lockFocus];
         [NSColor.blackColor setFill];
@@ -524,30 +587,42 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
                      operation:NSCompositingOperationSourceOver fraction:1];
         }
         [image unlockFocus];
-    } else {
-        image = [NSImage imageWithSystemSymbolName:@"battery.100percent"
-                         accessibilityDescription:@"Battery"];
+    } else if (!image) {
+        // Missing artwork must not imply a full battery or fabricate an AC state.
+        image = [NSImage imageWithSystemSymbolName:@"questionmark.square.dashed"
+                         accessibilityDescription:@"Battery artwork unavailable"];
+        image = [image imageWithSymbolConfiguration:[NSImageSymbolConfiguration
+            configurationWithPointSize:12 weight:NSFontWeightRegular]];
     }
-    // Keep Control Center's exact outlines, but render them as a fixed white
-    // glyph: NSStatusBar does not reliably tint a composed template image.
-    NSColor *iconColor = !pluggedIn && charge <= 20 ? NSColor.systemRedColor
-        : ([NSProcessInfo processInfo].lowPowerModeEnabled
+    // Preserve Control Center's outline alpha in the intermediate glyph.
+    // refreshStatusImage templates the entire composition for system contrast.
+    NSColor *iconColor = known && !pluggedIn && charge <= 20 ? NSColor.systemRedColor
+        : (known && [NSProcessInfo processInfo].lowPowerModeEnabled
             ? NSColor.systemYellowColor : NSColor.whiteColor);
-    [image lockFocus];
-    [iconColor setFill];
-    NSRectFillUsingOperation(NSMakeRect(0, 0, image.size.width, image.size.height),
-                             NSCompositingOperationSourceAtop);
-    [image unlockFocus];
+    if (!nativeImage) {
+        image = [[image copy] autorelease];
+        [image lockFocus];
+        [iconColor setFill];
+        NSRectFillUsingOperation(NSMakeRect(0, 0, image.size.width, image.size.height),
+                                 NSCompositingOperationSourceAtop);
+        [image unlockFocus];
+    }
     image.template = NO;
     self.batteryIcon = image;
-    [self refreshStatusImage];
-    self.statusItem.button.contentTintColor = nil;
-    NSString *state = heatPaused && pluggedIn ? @"heat protection paused charging" :
-        (charging ? @"charging" : (pluggedIn ? @"plugged in, not charging" : @"on battery"));
-    self.statusItem.button.toolTip = [NSString stringWithFormat:@"Battery %ld%%, %@", (long)charge, state];
-    self.statusItem.button.accessibilityLabel = self.statusItem.button.toolTip;
+    self.batteryIconHasColor = nativeImage && known && (lowPower || (!pluggedIn && charge <= 20));
     self.powerFlowView.chargePercent = charge;
+    NSString *state;
+    if (!known) state = present ? @"battery status unavailable" : @"battery not detected";
+    else if (needsService) state = @"battery service recommended";
+    else if (heatPaused && pluggedIn) state = @"heat protection paused charging";
+    else if (charging) state = @"charging";
+    else state = pluggedIn ? @"plugged in, not charging" : @"on battery";
+    if (known && lowPower) state = [state stringByAppendingString:@", Low Power Mode"];
+    self.statusItem.button.toolTip = known ? [NSString stringWithFormat:@"Battery %ld%%, %@", (long)charge, state] : state;
+    [self refreshStatusImage];
     self.powerFlowView.pluggedIn = pluggedIn;
+    self.powerFlowView.chargingStateKnown = known;
+    self.powerFlowView.batteryCharging = pluggedIn && charging;
     self.powerFlowView.heatPaused = heatPaused;
     [self.powerFlowView setNeedsDisplay:YES];
     [self refreshPopoverControls];
@@ -589,6 +664,7 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
 - (void)setLimitPercent:(NSInteger)limitPercent {
     self.powerFlowView.limitPercent = limitPercent;
     [self.powerFlowView setNeedsDisplay:YES];
+    [self refreshPopoverControls];
 }
 
 - (NSString *)keepAwakeToolPath {
@@ -597,46 +673,49 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
 
 - (BOOL)isKeepAwakeActive {
     NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
-    if (self.keepAwakeStatusTime == 0 || now - self.keepAwakeStatusTime >= 10) {
+    if ([self keepAwakeToolPath] && (self.keepAwakeStatusTime == 0 || now-self.keepAwakeStatusTime >= 10))
+        [self requestKeepAwakeStatus];
+    [self syncKeepAwakeLidGuard];
+    return self.keepAwakeStatus.boolValue;
+}
+
+- (void)readKeepAwakeStatus:(void (^)(NSNumber *, NSString *))completion {
+    WattReadSleepStatus(@"/usr/bin/pmset",@[@"-g"],2,completion);
+}
+
+- (void)requestKeepAwakeStatus {
+    // Serialize reads and writes: no stale pre-toggle result can arrive after a write.
+    if (self.keepAwakeStatusReading || self.keepAwakeChanging) return;
+    self.keepAwakeStatusReading = YES;
+    self.keepAwakeStatusTime = NSProcessInfo.processInfo.systemUptime;
+    [self readKeepAwakeStatus:^(NSNumber *status, NSString *error) {
         NSNumber *previous = self.keepAwakeStatus;
         [previous retain];
-        self.keepAwakeStatusTime = now;
-        self.keepAwakeStatus = nil;
-        NSString *tool = [self keepAwakeToolPath];
-        if (tool != nil) {
-            NSTask *task = [[[NSTask alloc] init] autorelease];
-            NSPipe *output = [NSPipe pipe];
-            task.executableURL = [NSURL fileURLWithPath:tool];
-            task.arguments = @[@"--status"];
-            task.standardOutput = output;
-            task.standardError = [NSFileHandle fileHandleWithNullDevice];
-            @try {
-                [task launch];
-                NSData *data = [output.fileHandleForReading readDataToEndOfFile];
-                [task waitUntilExit];
-                NSString *value = [[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease];
-                value = [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-                if (task.terminationStatus == 0 && ([value isEqualToString:@"on"] || [value isEqualToString:@"off"]))
-                    self.keepAwakeStatus = @([value isEqualToString:@"on"]);
-            } @catch (NSException *exception) { (void)exception; }
-        }
-        self.keepAwakeError = self.keepAwakeStatus ? nil : @"Cannot read sleep setting; last display guard state retained";
-        if (tool && ![previous isEqual:self.keepAwakeStatus] && (previous || self.keepAwakeStatus))
+        self.keepAwakeStatusReading = NO;
+        self.keepAwakeStatusTime = NSProcessInfo.processInfo.systemUptime;
+        self.keepAwakeStatus = status;
+        self.keepAwakeError = error;
+        if (![previous isEqual:status] && (previous || status))
             WattRecordAwakeEvent(self.keepAwakeError ?: (self.keepAwakeStatus.boolValue ? @"Sleep prevention confirmed on" : @"Sleep prevention confirmed off"));
         [previous release];
-    }
-    BOOL enabled = self.keepAwakeStatus.boolValue;
+        [self syncKeepAwakeLidGuard];
+        BOOL toggle = self.keepAwakeTogglePending;
+        self.keepAwakeTogglePending = NO;
+        [self refreshPopoverControls];
+        if (toggle && status) [self performKeepAwakeToggle];
+        // A failed pre-toggle read leaves the setting untouched; inline error stays visible.
+    }];
+}
+
+- (void)syncKeepAwakeLidGuard {
     // Preview/test executables have no bundled helper and must not touch hardware.
     if ([self keepAwakeToolPath] != nil)
         WattSyncLidGuard(self,WattKeepLidGuard(self.keepAwakeStatus,self.lidGuard != nil ||
             [NSUserDefaults.standardUserDefaults objectForKey:@"WattNookClosedLidBrightness"] != nil));
-    return enabled;
 }
 
 - (void)toggleKeepAwake {
-    if (self.keepAwakeChanging) return;
-    self.keepAwakeStatusTime = 0;
-    BOOL active = [self isKeepAwakeActive];
+    if (self.keepAwakeChanging || self.keepAwakeTogglePending) return;
     NSString *tool = [self keepAwakeToolPath];
     if (![[NSFileManager defaultManager] isExecutableFileAtPath:tool]) {
         NSAlert *alert = [[[NSAlert alloc] init] autorelease];
@@ -645,12 +724,18 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
         [alert runModal];
         return;
     }
-    if (!self.keepAwakeStatus) {
-        NSAlert *alert = [[[NSAlert alloc] init] autorelease];
-        alert.messageText = @"Keep Awake status is unavailable";
-        alert.informativeText = @"The current sleep setting could not be read. Retry shortly. Your last display guard state is retained.";
-        [alert runModal]; return;
-    }
+    self.keepAwakeTogglePending = YES;
+    [self requestKeepAwakeStatus];
+    [self refreshPopoverControls];
+}
+
+- (void)performKeepAwakeToggle {
+    if (self.keepAwakeChanging || !self.keepAwakeStatus) return;
+    BOOL active = self.keepAwakeStatus.boolValue;
+    NSString *tool = [self keepAwakeToolPath];
+    // A confirmation dialog runs a nested event loop: pause polling before it opens.
+    self.keepAwakeChanging = YES;
+    [self refreshPopoverControls];
     NSTask *task = [[[NSTask alloc] init] autorelease];
     task.executableURL = [NSURL fileURLWithPath:tool];
     if (!active && ![NSUserDefaults.standardUserDefaults boolForKey:@"WattNookKeepAwakeWarningAccepted"]) {
@@ -659,7 +744,11 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
         confirm.informativeText = @"This disables sleep for the entire Mac, including after WattNook quits. Turn Keep Awake off before carrying your Mac or putting it in a bag. Keep it ventilated, preferably on power. Keep WattNook running for closed-lid brightness handling. Administrator permission is needed unless the narrow sleep-toggle rule is installed. Do not manage this setting in Vorssaint at the same time.";
         [confirm addButtonWithTitle:@"Enable Keep Awake"];
         [confirm addButtonWithTitle:@"Cancel"];
-        if ([confirm runModal] != NSAlertFirstButtonReturn) return;
+        if ([confirm runModal] != NSAlertFirstButtonReturn) {
+            self.keepAwakeChanging = NO;
+            [self refreshPopoverControls];
+            return;
+        }
         [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"WattNookKeepAwakeWarningAccepted"];
     }
     task.arguments = @[active ? @"--disable" : @"--enable"];
@@ -686,6 +775,7 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
         [task launch];
     } @catch (NSException *exception) {
         self.keepAwakeChanging = NO;
+        [self refreshPopoverControls];
         NSAlert *alert = [[[NSAlert alloc] init] autorelease];
         alert.messageText = @"Could not change Keep Awake";
         alert.informativeText = exception.reason ?: @"Unknown error";

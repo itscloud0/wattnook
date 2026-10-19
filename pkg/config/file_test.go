@@ -38,3 +38,26 @@ func TestAdapterDisableTimerPersists(t *testing.T) {
 		t.Fatalf("AdapterDisableUntil() after clear = %s, want zero", got)
 	}
 }
+
+func TestThermalAdapterOptInIsSeparateAndPersists(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "batt.json")
+	f, err := NewFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.SetHeatProtection(true, 33, 30)
+	if f.ThermalAdapterEnabled() {
+		t.Fatal("old heat preference opted into adapter switching")
+	}
+	f.SetThermalAdapterEnabled(true)
+	if err = f.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := NewFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reloaded.ThermalAdapterEnabled() {
+		t.Fatal("explicit adapter opt-in was lost")
+	}
+}

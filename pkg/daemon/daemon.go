@@ -19,6 +19,7 @@ import (
 	"github.com/charlie0129/batt/pkg/compatibility"
 	"github.com/charlie0129/batt/pkg/config"
 	"github.com/charlie0129/batt/pkg/events"
+	"github.com/charlie0129/batt/pkg/powerui"
 	"github.com/charlie0129/batt/pkg/smc"
 )
 
@@ -95,9 +96,18 @@ func Run(configPath string, unixSocketPath string, allowNonRoot bool) error {
 	if err := smcConn.Open(); err != nil {
 		return fmt.Errorf("open Apple SMC: %w", err)
 	}
+	if smcConn.ChargeControlMode() == compatibility.ChargeControlUnsupported {
+		controller, probeErr := powerui.New()
+		if probeErr != nil {
+			logrus.WithError(probeErr).Warn("native charge control unavailable")
+		} else {
+			nativeCharge = controller
+		}
+	}
 	capabilities = detectCapabilities()
 	logrus.WithFields(capabilityLogFields(capabilities)).Info("detected hardware capabilities")
 	disableUnsupportedConfiguredFeatures()
+	initializeNativeThermal(configPath)
 
 	// Initialize calibration state before the scheduler and main loop can use it.
 	if configPath != "" {
@@ -198,7 +208,7 @@ func Run(configPath string, unixSocketPath string, allowNonRoot bool) error {
 		}
 	}()
 
-	listeningForSleep := capabilities.SleepHooks
+	listeningForSleep := capabilities.SleepHooks || capabilities.ThermalAdapter
 	if listeningForSleep {
 		go func() {
 			if err := listenNotifications(); err != nil {
@@ -246,17 +256,7 @@ func Run(configPath string, unixSocketPath string, allowNonRoot bool) error {
 		logrus.Errorf("failed to remove calibration sleep assertion before exiting: %v", err)
 	}
 
-	if capabilities.ChargingControl {
-		if err := smcConn.ResetChargeControl(); err != nil {
-			logrus.Errorf("failed to reset charge control before exiting: %v", err)
-		}
-	}
-
-	if capabilities.AdapterControl {
-		if err := smcConn.EnableAdapter(); err != nil {
-			logrus.Errorf("failed to re-enable adapter before exiting: %v", err)
-		}
-	}
+	resetChargeControlOnShutdown()
 
 	logrus.Info("closing smc connection")
 	err = smcConn.Close()

@@ -7,6 +7,7 @@ const (
 	ChargeControlUnsupported ChargeControlMode = "unsupported"
 	ChargeControlLegacy      ChargeControlMode = "legacy"
 	ChargeControlFirmware    ChargeControlMode = "firmware"
+	ChargeControlNative      ChargeControlMode = "native"
 )
 
 // Feature identifies a daemon feature that clients may need to gate.
@@ -18,6 +19,7 @@ const (
 	FeatureMagSafeLED      Feature = "MagSafe LED control"
 	FeatureAdapterControl  Feature = "power adapter control"
 	FeatureCalibration     Feature = "auto calibration"
+	FeatureHeatProtection  Feature = "heat protection"
 )
 
 // Capabilities reports the hardware-dependent features supported by the daemon.
@@ -28,6 +30,8 @@ type Capabilities struct {
 	MagSafeLED        bool              `json:"magSafeLED"`
 	AdapterControl    bool              `json:"adapterControl"`
 	Calibration       bool              `json:"calibration"`
+	SupportedLimits   []int             `json:"supportedLimits,omitempty"`
+	ThermalAdapter    bool              `json:"thermalAdapter"`
 }
 
 // Permissive returns the fallback used by clients talking to an older or
@@ -57,6 +61,10 @@ func (c Capabilities) Supports(feature Feature) bool {
 		return c.AdapterControl
 	case FeatureCalibration:
 		return c.Calibration
+	case FeatureHeatProtection:
+		// Adapter input inhibition is not battery charge inhibition. CHIE
+		// availability must never advertise charge-only thermal protection.
+		return c.ChargingControl && c.ChargeControlMode == ChargeControlLegacy
 	default:
 		return true
 	}

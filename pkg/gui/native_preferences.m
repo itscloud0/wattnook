@@ -20,10 +20,9 @@ NSColor *WattAccentColor(void) {
     return NSColor.systemBlueColor;
 }
 NSColor *WattSurfaceColor(BOOL lighter) {
-    NSColor *accent = [WattAccentColor() colorUsingColorSpace:NSColorSpace.genericRGBColorSpace];
-    CGFloat base = lighter ? 0.13 : 0.095;
-    NSColor *surface = [NSColor colorWithCalibratedRed:base+accent.redComponent*0.04
-        green:base+accent.greenComponent*0.07 blue:base+accent.blueComponent*0.09 alpha:1];
+    CGFloat base = lighter ? 0.13 : 0.085;
+    NSColor *surface = [NSColor colorWithCalibratedRed:base
+        green:base+0.035 blue:base+0.080 alpha:1];
     return WattGlassTheme() ? [surface colorWithAlphaComponent:0.45] : surface;
 }
 NSArray *WattMenuMetrics(void) {

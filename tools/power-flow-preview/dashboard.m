@@ -3,12 +3,54 @@
 #include <math.h>
 #include <stdlib.h>
 #import <QuartzCore/QuartzCore.h>
+#import <objc/message.h>
+
+static void AssertSameBatteryPixels(NSImage *actual, NSImage *expected) {
+    assert(actual && expected && NSEqualSizes(actual.size,expected.size));
+    NSBitmapImageRep *a = [NSBitmapImageRep imageRepWithData:actual.TIFFRepresentation];
+    NSBitmapImageRep *b = [NSBitmapImageRep imageRepWithData:expected.TIFFRepresentation];
+    assert(a.pixelsWide == b.pixelsWide && a.pixelsHigh == b.pixelsHigh);
+    for (NSInteger y=0;y<a.pixelsHigh;y++) for (NSInteger x=0;x<a.pixelsWide;x++) {
+        NSColor *ca = [[a colorAtX:x y:y] colorUsingColorSpace:NSColorSpace.deviceRGBColorSpace];
+        NSColor *cb = [[b colorAtX:x y:y] colorUsingColorSpace:NSColorSpace.deviceRGBColorSpace];
+        assert(fabs(ca.alphaComponent-cb.alphaComponent) < 0.001);
+        if (ca.alphaComponent > 0) {
+            assert(fabs(ca.redComponent-cb.redComponent) < 0.001);
+            assert(fabs(ca.greenComponent-cb.greenComponent) < 0.001);
+            assert(fabs(ca.blueComponent-cb.blueComponent) < 0.001);
+        }
+    }
+}
+
+static void CheckNativeBatteryArtwork(void) {
+    if (NSProcessInfo.processInfo.operatingSystemVersion.majorVersion < 27) return;
+    assert(WattNativeBatteryRendererAvailable());
+    Class cls = NSClassFromString(@"BUIImage");
+    id cache = ((id(*)(id,SEL))objc_msgSend)(cls,NSSelectorFromString(@"sharedBUIImageCache"));
+    SEL selector = NSSelectorFromString(@"_modernBatteryImageForLevel:charging:pluggedIn:noBattery:needsReplacement:lowPowerMode:showPercentage:useRed:");
+    for (NSNumber *charge in @[@0,@1,@10,@20,@21,@50,@80,@99,@100]) {
+        for (NSArray *flags in @[@[@NO,@NO,@YES,@NO,@NO],@[@YES,@YES,@YES,@NO,@NO],
+                @[@YES,@NO,@YES,@NO,@NO],@[@NO,@NO,@YES,@NO,@YES],
+                @[@NO,@NO,@NO,@NO,@NO],@[@NO,@NO,@YES,@YES,@NO]]) {
+            BOOL plugged=[flags[0] boolValue], charging=[flags[1] boolValue], present=[flags[2] boolValue];
+            BOOL service=[flags[3] boolValue], low=[flags[4] boolValue];
+            NSImage *expected = ((id(*)(id,SEL,double,BOOL,BOOL,BOOL,BOOL,BOOL,BOOL,BOOL))objc_msgSend)(
+                cache,selector,charge.doubleValue/100.0,present&&plugged&&charging,present&&plugged,
+                !present,present&&service,low,NO,present&&!plugged&&charge.integerValue<=20);
+            AssertSameBatteryPixels(WattSystemMenuBattery(charge.integerValue,plugged,charging,present,service,low),expected);
+        }
+    }
+    assert(WattSystemMenuBattery(-1,NO,NO,YES,NO,NO) == nil);
+}
 
 // Isolated native render + behavior checks. No daemon callbacks or process quits.
 void battMenuWillOpen(uintptr_t handle) { (void)handle; }
 void battMenuTimerFired(uintptr_t handle) { (void)handle; }
 void battMenuAction(uintptr_t handle, int item, bool checked) { (void)handle; (void)item; (void)checked; }
 static int requestedLimit = -1;
+static int mainCallbacks;
+void battMainCallback(uintptr_t handle) { assert(handle == 123); assert(NSThread.isMainThread); mainCallbacks++; }
+void battStorageAction(uintptr_t handle,uint64_t generation,int action) {}
 bool battMenuSetLimit(uintptr_t handle, int limit) { (void)handle; requestedLimit = limit; return true; }
 
 static NSButton *FindButton(NSView *view, NSString *title) {
@@ -16,6 +58,15 @@ static NSButton *FindButton(NSView *view, NSString *title) {
         if ([child isKindOfClass:NSButton.class] && [((NSButton *)child).title isEqual:title])
             return (NSButton *)child;
         NSButton *found = FindButton(child,title);
+        if (found) return found;
+    }
+    return nil;
+}
+static NSButton *FindAccessibleButton(NSView *view, NSString *label) {
+    for (NSView *child in view.subviews) {
+        if ([child isKindOfClass:NSButton.class] && [child.accessibilityLabel isEqual:label])
+            return (NSButton *)child;
+        NSButton *found = FindAccessibleButton(child,label);
         if (found) return found;
     }
     return nil;
@@ -28,7 +79,11 @@ static NSUInteger CountGlassViews(NSView *view) {
 static void Capture(NSView *view, NSString *directory, NSString *name) {
     if (getenv("WATTNOOK_CHECKS_ONLY")) return;
     const char *prefix = getenv("WATTNOOK_CAPTURE_PREFIX");
-    if (prefix && ![name hasPrefix:[NSString stringWithUTF8String:prefix]]) return;
+    if (prefix && strcmp(prefix,"compact") == 0) {
+        if (![@[@"polish-battery",@"charging",@"hybrid",@"native-heat-unavailable",@"native-heat-settings",@"monitoring-settings",@"polish-system",@"monitoring-history"] containsObject:name]) return;
+    } else if (prefix && strcmp(prefix,"redesign") == 0) {
+        if (![@[@"polish-battery",@"polish-system",@"polish-glass-system",@"polish-glass-battery",@"monitoring-settings",@"monitoring-history",@"native-heat-unavailable"] containsObject:name]) return;
+    } else if (prefix && ![name hasPrefix:[NSString stringWithUTF8String:prefix]]) return;
     [view displayIfNeeded];
     NSBitmapImageRep *bitmap = [view bitmapImageRepForCachingDisplayInRect:view.bounds];
     [view cacheDisplayInRect:view.bounds toBitmapImageRep:bitmap];
@@ -80,6 +135,10 @@ int main(int argc, const char *argv[]) {
         assert(BattCounterRate(0,100,0) == -1);
         assert(BattCounterRate(0,100,NAN) == -1);
         [NSApplication sharedApplication];
+        batt_dispatch_main(123);
+        assert(mainCallbacks == 0);
+        [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.02]];
+        assert(mainCallbacks == 1);
         // This executable has no app bundle: preferences are isolated from WattNook.
         assert(NSBundle.mainBundle.bundleIdentifier == nil);
         for (NSString *key in @[@"WattNookMonitoringEnabled",@"WattNookHistoryEnabled",@"WattNookAwakeEvents"])
@@ -97,6 +156,111 @@ int main(int argc, const char *argv[]) {
         c.items = [NSMutableDictionary dictionary];
         c.statusItem = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
         c.powerFlowView = [[[BattPowerFlowView alloc] initWithFrame:NSMakeRect(0,0,360,220)] autorelease];
+        CheckNativeBatteryArtwork();
+        {
+            // Keep Apple's natural 26x14 footprint, not a resized reconstruction.
+            BOOL modern = WattNativeBatteryRendererAvailable();
+            [c setLiveStatusCharge:0 pluggedIn:NO charging:NO heatPaused:NO];
+            assert(c.batteryIcon.size.width == (modern ? 26 : 25));
+            NSBitmapImageRep *empty = [NSBitmapImageRep imageRepWithData:c.batteryIcon.TIFFRepresentation];
+            CGFloat emptyAlpha = [[empty colorAtX:empty.pixelsWide/2 y:empty.pixelsHigh/2] alphaComponent];
+            assert(modern ? (emptyAlpha > 0 && emptyAlpha < 0.95) : emptyAlpha < 0.05);
+            [c setLiveStatusCharge:100 pluggedIn:NO charging:NO heatPaused:NO];
+            NSBitmapImageRep *full = [NSBitmapImageRep imageRepWithData:c.batteryIcon.TIFFRepresentation];
+            CGFloat fullAlpha = [[full colorAtX:full.pixelsWide/2 y:full.pixelsHigh/2] alphaComponent];
+            // Apple uses semantic foreground alpha, not our old opaque white.
+            // Exact native pixels for all levels/states are checked above.
+            assert(modern ? fullAlpha > emptyAlpha : fullAlpha > 0.95);
+            for (NSNumber *charge in @[@0,@1,@20,@80,@100]) {
+                for (NSNumber *charging in @[@NO,@YES]) {
+                    [c setLiveStatusCharge:charge.integerValue pluggedIn:YES charging:charging.boolValue heatPaused:NO];
+                    assert(c.batteryIcon.size.width == (modern ? 26 : 25) && c.batteryIcon.size.height == 14);
+                    assert(c.statusItem.button.image.isTemplate);
+                }
+            }
+            // A changed percentage must be composed in the same update, not one poll later.
+            [NSUserDefaults.standardUserDefaults setObject:@[@"Battery"] forKey:@"WattNookMenuMetrics"];
+            [c setLiveStatusCharge:9 pluggedIn:NO charging:NO heatPaused:NO];
+            NSData *nine = c.statusItem.button.image.TIFFRepresentation;
+            [c setLiveStatusCharge:88 pluggedIn:NO charging:NO heatPaused:NO];
+            NSData *first88 = c.statusItem.button.image.TIFFRepresentation;
+            [c refreshStatusImage];
+            assert(![nine isEqual:first88]);
+            assert([first88 isEqual:c.statusItem.button.image.TIFFRepresentation]);
+            if (modern) {
+                [c setLiveStatusCharge:10 pluggedIn:NO charging:NO heatPaused:NO];
+                assert(c.batteryIconHasColor && !c.batteryColorView.hidden);
+                assert([c.batteryColorView hitTest:NSMakePoint(2,2)] == nil);
+                assert(c.batteryColorView.allowsVibrancy);
+                assert(NSEqualSizes(c.batteryColorView.frame.size,c.batteryIcon.size));
+                assert([c.batteryColorView.image.TIFFRepresentation isEqual:c.batteryIcon.TIFFRepresentation]);
+                [c setLiveStatusCharge:80 pluggedIn:YES charging:NO heatPaused:NO];
+                assert(c.batteryColorView.hidden && c.batteryColorView.image == nil);
+                [c setLiveStatusCharge:80 pluggedIn:NO charging:NO heatPaused:NO present:NO needsService:NO];
+                assert([c.statusItem.button.toolTip containsString:@"not detected"]);
+                BattApplyBatterySnapshot(c,@{});
+                assert(c.powerFlowView.chargePercent == -1 && !c.powerFlowView.chargingStateKnown);
+                assert([c.statusItem.button.toolTip containsString:@"unavailable"]);
+                BattApplyBatterySnapshot(c,@{@"CurrentCapacity":@80,@"ExternalConnected":@YES,
+                    @"BatteryHealthCondition":@"Check Battery",@"IsCharging":@NO});
+                assert([c.statusItem.button.toolTip containsString:@"service recommended"]);
+                [c refreshStatusImage]; // System sampling must not erase VoiceOver state.
+                assert([c.statusItem.button.accessibilityLabel containsString:@"service recommended"]);
+                assert([c.statusItem.button.accessibilityLabel componentsSeparatedByString:@"Battery 80%"].count == 2);
+                [c setLiveStatusCharge:80 pluggedIn:YES charging:YES heatPaused:NO];
+                [c refreshStatusImage];
+                assert([c.statusItem.button.accessibilityLabel containsString:@"charging"]);
+            }
+        }
+        // The final composed status image must delegate contrast to NSStatusBar,
+        // including text-only, icon-only and mixed layouts in Aqua/Dark Aqua.
+        for (NSString *appearance in @[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]) {
+            c.statusItem.button.appearance = [NSAppearance appearanceNamed:appearance];
+            for (NSArray *metrics in @[@[], @[@"CPU"], @[@"Battery"], @[@"CPU",@"RAM",@"SSD",@"Battery"]]) {
+                [NSUserDefaults.standardUserDefaults setObject:metrics forKey:@"WattNookMenuMetrics"];
+                for (NSNumber *showIcon in @[@NO,@YES]) {
+                    [NSUserDefaults.standardUserDefaults setBool:showIcon.boolValue forKey:@"WattNookMenuBatteryIcon"];
+                    [c setLiveStatusCharge:48 pluggedIn:NO charging:NO heatPaused:NO];
+                    assert(c.statusItem.button.image.isTemplate);
+                    assert(c.statusItem.button.contentTintColor == nil);
+                    assert(c.statusItem.button.image.size.width > 0);
+                    if (WattNativeBatteryRendererAvailable()) {
+                        [c setLiveStatusCharge:10 pluggedIn:NO charging:NO heatPaused:NO];
+                        BOOL visible = showIcon.boolValue || metrics.count == 0;
+                        assert(c.batteryColorView.hidden == !visible);
+                        if (visible) {
+                            assert(NSContainsRect(c.statusItem.button.bounds,c.batteryColorView.frame));
+                            assert(fabs(NSMidY(c.batteryColorView.frame)-NSMidY(c.statusItem.button.bounds)) < 1);
+                        }
+                    }
+                }
+            }
+        }
+        c.statusItem.button.appearance = nil;
+        if (getenv("WATTNOOK_MENU_ICON_PREVIEW")) {
+            NSArray *states = @[@"On battery",@"Charging",@"AC, not charging",@"Low battery",@"Low Power Mode",@"Service",@"No battery",@"Unknown"];
+            [NSUserDefaults.standardUserDefaults setObject:@[@"CPU",@"RAM",@"SSD",@"Battery"] forKey:@"WattNookMenuMetrics"];
+            [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"WattNookMenuBatteryIcon"];
+            for (NSString *appearance in @[NSAppearanceNameAqua,NSAppearanceNameDarkAqua]) {
+                c.statusItem.button.appearance = [NSAppearance appearanceNamed:appearance];
+                for (NSInteger state=0;state<states.count;state++) {
+                    [c setLiveStatusCharge:state==3?10:(state==7?-1:48)
+                        pluggedIn:state==1||state==2 charging:state==1 heatPaused:NO
+                        present:state!=6 needsService:state==5];
+                    if (state == 4) {
+                        // Fixture only: do not toggle the host's Low Power Mode.
+                        c.batteryIcon = WattSystemMenuBattery(48,NO,NO,YES,NO,YES);
+                        c.batteryIconHasColor = YES;
+                        [c refreshStatusImage];
+                    }
+                    Capture(c.statusItem.button,directory,[NSString stringWithFormat:@"menu-icon-%@-%ld",appearance,(long)state]);
+                }
+            }
+            c.statusItem.button.appearance = nil;
+            [c setLiveStatusCharge:48 pluggedIn:NO charging:NO heatPaused:NO];
+        }
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookMenuMetrics"];
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookMenuBatteryIcon"];
         c.diskReadRate = 12400000; c.diskWriteRate = 2100000;
         c.diskSpacePercent = 73; c.diskTotalBytes = 500000000000; c.diskFreeBytes = 135000000000;
         c.swapUsedBytes = 1.5*1024*1024*1024;
@@ -112,6 +276,51 @@ int main(int argc, const char *argv[]) {
         c.previousProcessCPU = previewProcesses;
         BattBuildPopover(c);
         NSView *view = c.popover.contentViewController.view;
+        // The approved full redesign gives both destinations equal, usable lanes.
+        assert(NSWidth(view.bounds) == 400 && NSHeight(view.bounds) == 532);
+        assert(NSHeight(c.powerFlowView.frame) == 220);
+        assert(NSEqualRects(c.powerFlowView.frame,NSMakeRect(0,214,400,220)));
+        assert(NSMaxY(FindButton(view,@"History ›").frame) + 6 <= 446);
+        assert(NSMaxY(FindButton(view,@"‹ System").frame) + 6 <= 446);
+        assert(NSWidth(FindButton(view,@"Battery").frame) >= 112);
+        assert(NSWidth(FindButton(view,@"System").frame) >= 112);
+        assert(FindButton(view,@"Storage") != nil);
+        assert(NSWidth(FindButton(view,@"Storage").frame) >= 112);
+        assert(NSMaxX(FindButton(view,@"Battery").frame) + 8 <= NSMinX(FindButton(view,@"System").frame));
+        assert(NSMaxX(FindButton(view,@"System").frame) + 8 <= NSMinX(FindButton(view,@"Storage").frame));
+        // Page navigation is a selected surface; sorting alone uses an underline.
+        assert(![[FindButton(view,@"Battery") valueForKey:@"tab"] boolValue]);
+        assert(![[FindButton(view,@"System") valueForKey:@"tab"] boolValue]);
+        assert(![[FindButton(view,@"CPU") valueForKey:@"tab"] boolValue]);
+        NSArray *contexts = @[[view valueForKey:@"_processCount"],
+            [view valueForKey:@"_swap"], [view valueForKey:@"_availableSpace"]];
+        // Column captions identify values before reading the measurements.
+        NSArray *orderedDetails = [view valueForKey:@"_details"];
+        NSArray *orderedCaptions = [view valueForKey:@"_detailCaptions"];
+        for (NSUInteger i=0;i<orderedDetails.count;i++) {
+            assert(NSMaxY(((NSView *)orderedDetails[i]).frame) <= NSMinY(((NSView *)orderedCaptions[i]).frame));
+            NSTextField *context = contexts[i];
+            assert(context.alignment == NSTextAlignmentCenter);
+            assert(fabs(NSMidX(context.frame)-NSMidX(((NSView *)orderedDetails[i]).frame)) < 0.5);
+        }
+        // Quiet consumer actions retain their hit area and readable second line.
+        NSArray *polishRows = [view valueForKey:@"_rows"];
+        NSButton *quietQuit = [polishRows[0] valueForKey:@"_quit"];
+        assert([[quietQuit valueForKey:@"plain"] boolValue]);
+        assert(NSHeight(quietQuit.frame) >= 24);
+        assert(((NSTextField *)[polishRows[0] valueForKey:@"_relative"]).font.pointSize >= 10.5);
+        assert([((NSTextField *)[polishRows[0] valueForKey:@"_amount"]).textColor isEqual:NSColor.labelColor]);
+        assert(polishRows.count == 6);
+        for (NSButton *sort in @[FindButton(view,@"CPU"),FindButton(view,@"Memory"),FindButton(view,@"Disk")])
+            assert(NSWidth(sort.frame) >= 100 && NSHeight(sort.frame) >= 28);
+        for (NSTextField *caption in [view valueForKey:@"_detailCaptions"])
+            assert(caption.alignment == NSTextAlignmentCenter);
+        NSButton *awakeInfo = FindAccessibleButton(view,@"Keep Awake details");
+        if (!awakeInfo) { fprintf(stderr,"FAIL: Battery has a direct Keep Awake details button\n"); return 1; }
+        assert(awakeInfo.target == c && awakeInfo.action == @selector(showKeepAwakeDiagnostics:));
+        assert(c.darkButton.action == @selector(toggleKeepAwakeFromPopover:));
+        assert(!NSIntersectsRect(awakeInfo.frame,c.darkButton.frame));
+        assert(NSMaxX(awakeInfo.frame) <= 380 && NSHeight(awakeInfo.frame) >= 24);
         NSWindow *window = [[NSWindow alloc] initWithContentRect:view.bounds
             styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
         window.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
@@ -129,10 +338,12 @@ int main(int argc, const char *argv[]) {
             power.chargePercent = [state[@"charge"] integerValue]; power.limitPercent = 80;
             power.pluggedIn = [state[@"plug"] boolValue]; power.adapterWatts = [state[@"adapter"] doubleValue];
             power.batteryWatts = [state[@"battery"] doubleValue]; power.systemWatts = [state[@"system"] doubleValue];
+            power.chargingStateKnown = YES; power.batteryCharging = power.batteryWatts > 0.25;
             power.heatPaused = [state[@"heat"] boolValue]; power.temperatureCelsius = 36.5;
             power.hasTelemetry = ![state[@"name"] isEqual:@"unavailable"];
             BattRefreshPopover(c,63,81);
             Capture(view,directory,state[@"name"]);
+            if ([state[@"name"] isEqual:@"battery"]) Capture(view,directory,@"polish-battery");
         }
         NSButton *system = FindButton(view,@"System"); assert(system);
         // Cached system telemetry drives the real button; pending authorization blocks repeats.
@@ -140,6 +351,41 @@ int main(int argc, const char *argv[]) {
         c.keepAwakeStatus = @YES;
         BattRefreshPopover(c,63,81);
         assert([c.darkButton.title isEqual:@"Keep Awake · On"] && c.darkButton.enabled);
+        CGFloat awakeTitleWidth = [c.darkButton.title sizeWithAttributes:@{NSFontAttributeName:c.darkButton.font}].width;
+        assert(awakeTitleWidth + (c.darkButton.image ? 27 : 0) + 12 <= NSWidth(c.darkButton.bounds));
+        Capture(view,directory,@"awake-controls");
+        NSMenuItem *heatFixture = [[[NSMenuItem alloc] initWithTitle:
+            @"Custom heat protection unavailable with Apple's native charge limit"
+            action:nil keyEquivalent:@""] autorelease];
+        [c rememberItem:heatFixture as:BattItemHeatProtection];
+        heatFixture.hidden = YES;
+        c.powerFlowView.supportedLimits = @[@80,@85,@90,@95,@100];
+        c.powerFlowView.pluggedIn = YES;
+        c.powerFlowView.adapterWatts = 18.9;
+        c.powerFlowView.batteryWatts = 0;
+        c.powerFlowView.systemWatts = 18.9;
+        c.powerFlowView.hasTelemetry = YES;
+        BattRefreshPopover(c,63,81);
+        assert(!c.heatButton.enabled && [c.heatButton.title isEqual:@"Heat unavailable"]);
+        assert(c.heatButton.hidden);
+        assert(NSMinX(c.darkButton.frame) == 24 && NSWidth(c.darkButton.frame) == 320);
+        assert(NSMaxX(c.darkButton.frame) + 4 <= NSMinX(awakeInfo.frame));
+        NSTextField *heatNotice = [view valueForKey:@"_heatNotice"];
+        assert(!heatNotice.hidden && [heatNotice.stringValue containsString:@"Apple limit"]);
+        assert([heatNotice.stringValue sizeWithAttributes:@{NSFontAttributeName:heatNotice.font}].width <= NSWidth(heatNotice.frame));
+        assert([c.heatButton.accessibilityLabel isEqual:@"Heat unavailable. Native limit only"]);
+        assert([c.heatButton.toolTip containsString:@"unavailable"]);
+        Capture(view,directory,@"native-heat-unavailable");
+        NSButton *heatSettings = FindAccessibleButton(view,@"Settings");
+        [heatSettings performClick:nil];
+        Capture(view,directory,@"native-heat-settings");
+        [FindButton(view,@"Battery") performClick:nil];
+        heatFixture.hidden = NO;
+        c.powerFlowView.supportedLimits = nil;
+        BattRefreshPopover(c,63,81);
+        assert(c.heatButton.enabled && [c.heatButton.accessibilityLabel isEqual:@"Heat protection. Temperature control"]);
+        assert(!c.heatButton.hidden && heatNotice.hidden);
+        assert(NSMinX(c.darkButton.frame) == 204 && NSWidth(c.darkButton.frame) == 140);
         c.keepAwakeChanging = YES;
         BattRefreshPopover(c,63,81);
         assert([c.darkButton.title isEqual:@"Changing…"] && !c.darkButton.enabled);
@@ -157,6 +403,27 @@ int main(int argc, const char *argv[]) {
             characters:@"" charactersIgnoringModifiers:@"" isARepeat:NO keyCode:124]];
         assert(requestedLimit == 85);
         assert(c.powerFlowView.displayedLimitPercent == 85);
+        // Native mode snaps to advertised choices, never unsupported SMC values.
+        for (NSNumber *identifier in @[@(BattItemQuickLimits),@(BattItemLimit80)]) {
+            NSMenuItem *item = [[[NSMenuItem alloc] initWithTitle:@"Fixture" action:nil keyEquivalent:@""] autorelease];
+            [c rememberItem:item as:identifier.integerValue];
+        }
+        [c item:BattItemQuickLimits].hidden = NO;
+        [c item:BattItemLimit80].enabled = YES;
+        c.powerFlowView.limitEditable = YES;
+        c.powerFlowView.supportedLimits = @[@80,@85,@90,@95,@100];
+        c.powerFlowView.limitPercent = 85;
+        [c.powerFlowView accessibilitySetValue:@35];
+        assert(requestedLimit == 80);
+        [c.powerFlowView accessibilitySetValue:@92];
+        assert(requestedLimit == 90);
+        [c.powerFlowView accessibilitySetValue:@100];
+        assert(requestedLimit == 100);
+        c.powerFlowView.limitPercent = -1;
+        BattRefreshPopover(c,63,81);
+        assert(!c.powerFlowView.limitEditable);
+        assert(c.powerFlowView.displayedLimitPercent == -1);
+        c.powerFlowView.supportedLimits = nil;
         c.powerFlowView.limitPercent = 80;
         c.powerFlowView.limitPercent = 20;
         assert([view hitTest:NSMakePoint(84,308)] == c.powerFlowView);
@@ -179,9 +446,7 @@ int main(int argc, const char *argv[]) {
         assert(consumerRows.count == 6);
         assert(((NSTextField *)[view valueForKey:@"_swap"]).font.pointSize == 12);
         assert([((NSTextField *)[view valueForKey:@"_swap"]).stringValue isEqual:@"Swap 1.5 GB"]);
-        assert(((NSView *)[view valueForKey:@"_processCount"]).frame.origin.x == 24);
-        assert(((NSView *)[view valueForKey:@"_swap"]).frame.origin.x == 134);
-        assert(((NSView *)[view valueForKey:@"_availableSpace"]).frame.origin.x == 244);
+        for(NSUInteger i=0;i<3;i++) assert(fabs(NSMidX(((NSView *)contexts[i]).frame)-NSMidX(((NSView *)orderedDetails[i]).frame))<0.5);
         assert([((NSTextField *)[view valueForKey:@"_availableSpace"]).stringValue isEqual:@"Free 135 GB"]);
         // Regress the actual NSRangeException: CPU's default NSButton tag was -1.
         [FindButton(view,@"Memory") performClick:nil];
@@ -199,6 +464,7 @@ int main(int argc, const char *argv[]) {
         BattRefreshPopover(c,63,81);
         assert([[view valueForKey:@"_sortMetric"] integerValue] == 0);
         Capture(view,directory,@"system-cpu");
+        Capture(view,directory,@"polish-system");
         NSArray *cpuApps = c.appStats;
         NSMutableDictionary *busyApp = [[cpuApps[0] mutableCopy] autorelease]; busyApp[@"cpu"] = @234;
         c.appStats = @[busyApp]; BattRefreshPopover(c,35,81);
@@ -277,9 +543,28 @@ int main(int argc, const char *argv[]) {
         if (WattGlassAvailable()) {
             [glass performClick:nil]; assert(WattGlassTheme());
             assert(CountGlassViews(view) == 2);
+            // Availability changes rebuild actual Glass shapes, not just button frames.
+            for (NSNumber *unavailable in @[@YES,@NO,@YES,@NO]) {
+                heatFixture.hidden = unavailable.boolValue;
+                BattRefreshPopover(c,63,81);
+                assert(c.heatButton.hidden == unavailable.boolValue);
+                NSView *batteryPage = [view valueForKey:@"_batteryPage"];
+                NSView *actionGlass = nil;
+                for (NSView *container in [view valueForKey:@"_glassViews"])
+                    if (container.superview == batteryPage) actionGlass = container;
+                assert(actionGlass && NSEqualRects(actionGlass.frame,NSMakeRect(24,158,320,44)));
+                NSView *glassContent = [actionGlass valueForKey:@"contentView"];
+                assert(glassContent.subviews.count == (unavailable.boolValue ? 1 : 2));
+                if (unavailable.boolValue)
+                    assert(NSEqualRects(((NSView *)glassContent.subviews.firstObject).frame,NSMakeRect(0,0,320,44)));
+                assert(CountGlassViews(view) == 2);
+            }
             [FindButton(view,@"System") performClick:nil];
+            Capture(view,directory,@"polish-glass-system");
             [FindButton(view,@"Battery") performClick:nil];
-            assert(FindButton(view,@"Keep Awake"));
+            Capture(view,directory,@"polish-glass-battery");
+            assert(c.darkButton.action == @selector(toggleKeepAwakeFromPopover:));
+            assert(!c.darkButton.hidden);
             assert(!FindButton(view,@"Screen off"));
             [gear performClick:nil];
             [FindButton(view,@"Blue") performClick:nil]; assert(!WattGlassTheme());
@@ -313,6 +598,17 @@ int main(int argc, const char *argv[]) {
         [FindButton(view,@"Battery") performClick:nil]; Capture(view,directory,@"palette-amber");
         [gear performClick:nil]; [FindButton(view,@"Blue") performClick:nil];
         [FindButton(view,@"Battery") performClick:nil];
+        c.powerFlowView.heatPaused = NO;
+        BattApplyBatterySnapshot(c,@{@"ExternalConnected":@YES,@"IsCharging":@NO,
+            @"InstantAmperage":@736,@"Voltage":@12000,@"CurrentCapacity":@22,
+            @"PowerTelemetryData":@{@"SystemPowerIn":@15000}});
+        assert([c.statusItem.button.accessibilityLabel containsString:@"not charging"]);
+        assert(c.powerFlowView.chargingStateKnown && !c.powerFlowView.batteryCharging);
+        BattApplyBatterySnapshot(c,@{@"ExternalConnected":@YES,@"IsCharging":@YES,
+            @"InstantAmperage":@0,@"Voltage":@12000,@"CurrentCapacity":@22,
+            @"PowerTelemetryData":@{@"SystemPowerIn":@15000}});
+        assert([c.statusItem.button.accessibilityLabel hasSuffix:@", charging"]);
+        assert(c.powerFlowView.batteryCharging);
         BattApplyBatterySnapshot(c,@{@"ExternalConnected":@NO,@"InstantAmperage":@-900,
             @"Voltage":@12000,@"CurrentCapacity":@64,@"AppleRawMaxCapacity":@4003,@"DesignCapacity":@4629,
             @"CycleCount":@330,@"PowerTelemetryData":@{@"SystemPowerIn":@22000}});
@@ -376,8 +672,9 @@ int main(int argc, const char *argv[]) {
                     });
                     // AppKit may append an empty move after closing the outline.
                     assert(starts >= 1 && starts <= 2 && closes == 1);
-                    assert(CGPathContainsPoint(outline, NULL, CGPointMake(merge ? 190 : 170, 49), NO));
-                    assert(!CGPathContainsPoint(outline, NULL, CGPointMake(180, 49), NO));
+                    CGFloat center = NSMidX(c.powerFlowView.bounds);
+                    assert(CGPathContainsPoint(outline, NULL, CGPointMake(center+(merge ? 10 : -10), 49), NO));
+                    assert(!CGPathContainsPoint(outline, NULL, CGPointMake(center, 49), NO));
                 }
                 if (merge) break;
             }

@@ -12,6 +12,13 @@ BOOL WattMonitoringEnabled(void);
 BOOL WattHistoryEnabled(void);
 NSInteger WattMemoryPressureLevel(void);
 NSString *WattMemoryPressureLabel(NSInteger level);
+void WattReadSleepStatus(NSString *executable, NSArray<NSString *> *arguments, NSTimeInterval timeout,
+                        void (^completion)(NSNumber *status, NSString *error));
+NSString *WattSleepBlockerReport(void);
+BOOL WattNativeBatteryRendererAvailable(void);
+NSImage *WattSystemMenuBattery(NSInteger charge, BOOL pluggedIn, BOOL charging,
+                             BOOL present, BOOL needsService, BOOL lowPower);
+NSImageView *WattCreateBatteryColorView(void);
 
 typedef struct {
     NSTimeInterval time;
@@ -37,7 +44,10 @@ enum { WattHistoryCapacity = 90 };
 @property(nonatomic, assign) double temperatureCelsius;
 @property(nonatomic, assign) NSInteger chargePercent;
 @property(nonatomic, assign) NSInteger limitPercent;
+@property(nonatomic, copy) NSArray<NSNumber *> *supportedLimits;
 @property(nonatomic, assign) BOOL pluggedIn;
+@property(nonatomic, assign) BOOL chargingStateKnown;
+@property(nonatomic, assign) BOOL batteryCharging;
 @property(nonatomic, assign) BOOL heatPaused;
 @property(nonatomic, assign) BOOL hasTelemetry;
 @property(nonatomic, assign) BOOL limitEditable;
@@ -59,16 +69,27 @@ enum { WattHistoryCapacity = 90 };
 @property(nonatomic, assign) uintptr_t handle;
 @property(nonatomic, retain) NSStatusItem *statusItem;
 @property(nonatomic, retain) NSImage *batteryIcon;
+@property(nonatomic, retain) NSImageView *batteryColorView;
+@property(nonatomic, assign) BOOL batteryIconHasColor;
 @property(nonatomic, retain) NSMenu *menu;
 @property(nonatomic, retain) NSMutableDictionary<NSNumber *, NSMenuItem *> *items;
 @property(nonatomic, retain) NSTimer *timer;
 @property(nonatomic, retain) NSTimer *statsTimer;
 @property(nonatomic, retain) BattPowerFlowView *powerFlowView;
 @property(nonatomic, retain) NSPopover *popover;
+@property(nonatomic, retain) NSView *storageView;
+@property(nonatomic, assign) uint64_t storageGeneration;
 @property(nonatomic, retain) NSButton *chargeButton;
 @property(nonatomic, retain) NSButton *heatButton;
+@property(nonatomic, copy) NSString *heatDetail;
 @property(nonatomic, retain) NSButton *darkButton;
 @property(nonatomic, assign) BOOL keepAwakeChanging;
+@property(nonatomic, assign) BOOL keepAwakeStatusReading;
+@property(nonatomic, assign) BOOL keepAwakeTogglePending;
+@property(nonatomic, assign) BOOL awakeDiagnosticsLoading;
+@property(nonatomic, retain) NSWindowController *awakeDetailsWindow;
+@property(nonatomic, copy) NSString *awakeBlockerReport;
+@property(nonatomic, retain) NSDate *awakeSnapshotDate;
 @property(nonatomic, retain) NSNumber *keepAwakeStatus;
 @property(nonatomic, copy) NSString *keepAwakeError;
 @property(nonatomic, copy) NSString *lidGuardError;
@@ -120,6 +141,8 @@ enum { WattHistoryCapacity = 90 };
                    pluggedIn:(BOOL)pluggedIn
                     charging:(BOOL)charging
                  heatPaused:(BOOL)heatPaused;
+- (void)setLiveStatusCharge:(NSInteger)charge pluggedIn:(BOOL)pluggedIn charging:(BOOL)charging
+                heatPaused:(BOOL)heatPaused present:(BOOL)present needsService:(BOOL)needsService;
 - (void)updateSystemStats:(NSTimer *)timer;
 - (void)applyMonitoringPreferences;
 - (void)refreshStatusImage;
@@ -131,11 +154,26 @@ enum { WattHistoryCapacity = 90 };
 - (void)refreshPopoverControls;
 - (void)commitLimitFromRail:(BattPowerFlowView *)sender;
 - (BOOL)isKeepAwakeActive;
+- (void)readKeepAwakeStatus:(void (^)(NSNumber *, NSString *))completion;
+- (void)requestKeepAwakeStatus;
+- (void)syncKeepAwakeLidGuard;
+- (void)performKeepAwakeToggle;
+- (void)showKeepAwakeDiagnostics:(id)sender;
+- (void)refreshKeepAwakeDiagnostics:(id)sender;
+- (void)showStorageReview:(id)sender;
 @end
+
+void WattShowStorageReview(BattMenuController *controller);
+NSView *WattCreateStorageReview(BattMenuController *controller);
+void WattSetStorageReviewActive(BattMenuController *controller, BOOL active);
+void BattShowStoragePage(BattMenuController *controller);
+void WattUpdateStorageReview(BattMenuController *controller, uint64_t generation, NSDictionary *snapshot);
 
 void WattSyncLidGuard(BattMenuController *controller, BOOL enabled);
 void WattRecordAwakeEvent(NSString *event);
 NSString *WattAwakeReport(BattMenuController *controller);
+void WattShowAwakeDetails(BattMenuController *controller);
+void WattRefreshAwakeDetails(BattMenuController *controller);
 
 void BattBuildMenu(BattMenuController *controller, NSString *version);
 void BattApplyTooltips(BattMenuController *controller);

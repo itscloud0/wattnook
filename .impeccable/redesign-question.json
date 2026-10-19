@@ -1,0 +1,18 @@
+{
+ "title":"WattNook · полный редизайн",
+ "question":"Glass и анимированный поток сохраняем. Выбери общую структуру — это эскизы, не готовые скриншоты AppKit.",
+ "options":[{
+  "id":"wayfinding","kind":"assigned","label":"Glass, с ясной иерархией",
+  "lineage":"Чёткая типографика и организация информации из систем навигации",
+  "thesis":"Заряд, энергия и действия читаются сверху вниз без тяжёлых кнопок и повторов.",
+  "palette":["#162234","#D9EBFF","#60A5FA","#82D8B5"],
+  "materials":["Системный Liquid Glass","SF Pro, табличные цифры"],
+  "viewport":"Широкая навигация Battery/System; процент и температура, отдельный лимит, сохранённый поток, компактные действия; статистика и SSD внизу.",
+  "risk":"Потребуется немного больше ширины, чтобы подписи и действия не теснились.",
+  "raised":[{"from":"data-sublime","raise":"Единые выровненные числовые колонки."},{"from":"orienteering-map","raise":"Разные цветовые роли для выбора, энергии и предупреждений."},{"from":"metro","raise":"Сильнее разница основного показателя и вторичных подписей."},{"from":"cassette-j-card","raise":"Фиксированная высота строк без случайных переносов."},{"from":"botanical-folio","raise":"Стабильное расположение показателей при смене состояния."},{"from":"streaming-wall","raise":"Одно ясное главное действие, вторичные тише."}],
+  "html":".impeccable/mocks/decision/wayfinding.html","htmlFrame":"400x548","comp":".impeccable/mocks/decision/wayfinding.png"
+ }],
+ "canon":true,
+ "canonCard":{"label":"Классический Mac utility","thesis":"Максимально привычная компоновка macOS, без отдельного визуального характера.","palette":["#23252A","#F3F4F6","#3B82F6"],"materials":["Liquid Glass","Нативные группы и разделители"],"viewport":"Стандартные вкладки, компактный процент, поток и список системных значений.","risk":"Будет привычнее, но ближе к обычным системным утилитам.","html":".impeccable/mocks/decision/canon.html","htmlFrame":"400x548","comp":".impeccable/mocks/decision/canon.png"},
+ "reroll":{"registers":["safer","bolder"]},"steer":true,"buildPath":{"value":"code","toggle":true}
+}

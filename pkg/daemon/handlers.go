@@ -29,6 +29,15 @@ func getConfig(c *gin.Context) {
 }
 
 func getLimit(c *gin.Context) {
+	if capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+		state, err := nativeCharge.Read()
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		c.IndentedJSON(http.StatusOK, state.EffectiveLimit())
+		return
+	}
 	c.IndentedJSON(http.StatusOK, conf.UpperLimit())
 }
 
@@ -47,6 +56,10 @@ func setLimit(c *gin.Context) {
 		err := fmt.Errorf("limit must be between 10 and 100, got %d", l)
 		c.IndentedJSON(http.StatusBadRequest, err.Error())
 		_ = c.AbortWithError(http.StatusBadRequest, err)
+		return
+	}
+	if capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+		setNativeLimit(c, l)
 		return
 	}
 
@@ -125,6 +138,9 @@ func resolveDisableLimit(conf config.Config) (int, bool) {
 }
 
 func setDisableFor(c *gin.Context) {
+	if rejectNativeOperation(c) {
+		return
+	}
 	if !requireCapability(c, compatibility.FeatureChargingControl) {
 		return
 	}
@@ -261,6 +277,7 @@ func setPreventSystemSleep(c *gin.Context) {
 
 type heatProtectionRequest struct {
 	Enabled                  bool    `json:"enabled"`
+	AdapterMode              bool    `json:"adapterMode"`
 	PauseTemperatureCelsius  float64 `json:"pauseTemperatureCelsius"`
 	ResumeTemperatureCelsius float64 `json:"resumeTemperatureCelsius"`
 }
@@ -270,7 +287,8 @@ func getHeatProtection(c *gin.Context) {
 }
 
 func setHeatProtection(c *gin.Context) {
-	if !requireCapability(c, compatibility.FeatureChargingControl) {
+	// Native mode must still accept Off to retire a hold from an older build.
+	if capabilities.ChargeControlMode != compatibility.ChargeControlNative && !requireCapability(c, compatibility.FeatureHeatProtection) {
 		return
 	}
 
@@ -280,19 +298,15 @@ func setHeatProtection(c *gin.Context) {
 		_ = c.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
-	if request.PauseTemperatureCelsius < 20 || request.PauseTemperatureCelsius > 60 {
-		err := fmt.Errorf("heat pause temperature must be between 20 and 60 Celsius, got %.1f", request.PauseTemperatureCelsius)
+	if capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+		setNativeHeatProtection(c, request)
+		return
+	}
+	if err := validateHeatThresholds(request.PauseTemperatureCelsius, request.ResumeTemperatureCelsius); err != nil {
 		c.IndentedJSON(http.StatusBadRequest, err.Error())
 		_ = c.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
-	if request.ResumeTemperatureCelsius < 10 || request.ResumeTemperatureCelsius >= request.PauseTemperatureCelsius {
-		err := fmt.Errorf("heat resume temperature must be between 10 Celsius and the pause temperature, got %.1f", request.ResumeTemperatureCelsius)
-		c.IndentedJSON(http.StatusBadRequest, err.Error())
-		_ = c.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
-
 	conf.SetHeatProtection(request.Enabled, request.PauseTemperatureCelsius, request.ResumeTemperatureCelsius)
 	if err := conf.Save(); err != nil {
 		logrus.Errorf("saveConfig failed: %v", err)
@@ -489,6 +503,9 @@ func getBatteryInfo(c *gin.Context) {
 }
 
 func setLowerLimitDelta(c *gin.Context) {
+	if rejectNativeOperation(c) {
+		return
+	}
 	if !requireCapability(c, compatibility.FeatureChargingControl) {
 		return
 	}
@@ -586,7 +603,7 @@ func getPluggedIn(c *gin.Context) {
 }
 
 func getChargingControlCapable(c *gin.Context) {
-	c.IndentedJSON(http.StatusOK, smcConn.IsChargingControlCapable())
+	c.IndentedJSON(http.StatusOK, capabilities.ChargingControl)
 }
 
 func getVersion(c *gin.Context) {

@@ -1,6 +1,8 @@
 package smc
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
@@ -37,7 +39,10 @@ func (c *AppleSMC) IsAdapterEnabled() (bool, error) {
 		return false, err
 	}
 
-	ret = len(v.Bytes) == 1 && v.Bytes[0] == 0x0
+	if len(v.Bytes) != 1 {
+		return false, fmt.Errorf("%s has incorrect data length %d, want 1", key, len(v.Bytes))
+	}
+	ret = v.Bytes[0] == 0x0
 
 	logrus.Tracef("IsAdapterEnabled returned %t", ret)
 

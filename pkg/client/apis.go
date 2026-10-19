@@ -24,6 +24,18 @@ func (c *Client) SetLimit(l int) (string, error) {
 	return c.Put("/limit", strconv.Itoa(l))
 }
 
+func (c *Client) GetLimit() (int, error) {
+	ret, err := c.Get("/limit")
+	if err != nil {
+		return 0, err
+	}
+	limit, err := strconv.Atoi(strings.TrimSpace(ret))
+	if err != nil || limit < 10 || limit > 100 {
+		return 0, fmt.Errorf("invalid charge limit response")
+	}
+	return limit, nil
+}
+
 func (c *Client) DisableFor(d time.Duration) (string, error) {
 	return c.Put("/disable", strconv.Quote(d.String()))
 }
@@ -80,6 +92,13 @@ type HeatProtectionStatus struct {
 	ResumeTemperatureCelsius float64   `json:"resumeTemperatureCelsius"`
 	LastError                string    `json:"lastError,omitempty"`
 	UpdatedAt                time.Time `json:"updatedAt"`
+	Mechanism                string    `json:"mechanism,omitempty"`
+	Requested                string    `json:"requested,omitempty"`
+	Observed                 string    `json:"observed,omitempty"`
+	Reason                   string    `json:"reason,omitempty"`
+	Fault                    bool      `json:"fault"`
+	ReserveBlocked           bool      `json:"reserveBlocked"`
+	LastTransition           time.Time `json:"lastTransition,omitempty"`
 }
 
 func (c *Client) GetHeatProtection() (*HeatProtectionStatus, error) {

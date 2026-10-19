@@ -76,6 +76,7 @@ func canSystemSleepCallback() {
 
 //export systemWillSleepCallback
 func systemWillSleepCallback() {
+	setThermalSleeping(true)
 	/* The system WILL go to sleep. If you do not call IOAllowPowerChange or
 	   IOCancelPowerChange to acknowledge this message, sleep will be
 	   delayed by 30 seconds.
@@ -145,6 +146,7 @@ func systemWillPowerOnCallback() {
 
 //export systemHasPoweredOnCallback
 func systemHasPoweredOnCallback() {
+	setThermalSleeping(false)
 	// System has finished waking up...
 	logrus.Debugln("received kIOMessageSystemHasPoweredOn notification, system has finished waking up")
 	if capabilities.ChargeControlMode != compatibility.ChargeControlLegacy {

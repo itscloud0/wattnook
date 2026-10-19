@@ -48,6 +48,9 @@ func Run(unixSocketPath string) {
 
 	defer func() {
 		logrus.Info("Cleaning up resources")
+		if controller.storage != nil {
+			controller.storage.close()
+		}
 		cancel()
 		controller.menu.close()
 		handle.Delete()

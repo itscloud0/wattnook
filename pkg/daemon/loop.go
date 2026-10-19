@@ -88,6 +88,9 @@ func maintainAdapterDisable(conf config.Config, now time.Time) bool {
 // restoreDisabledLimit restores the upper limit saved by a "batt disable --for"
 // once its deadline has passed. It reports whether the limit was restored.
 func restoreDisabledLimit(conf config.Config, now time.Time) bool {
+	if capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+		return false
+	}
 	chargeControlTransitionMu.Lock()
 	defer chargeControlTransitionMu.Unlock()
 
@@ -397,6 +400,13 @@ func maintainLoopInner(ignoreMissedLoops bool) bool {
 	defer maintainLoopInnerLock.Unlock()
 
 	switch capabilities.ChargeControlMode {
+	case compatibility.ChargeControlNative:
+		if nativeThermal != nil {
+			// Retire owned holds, but never cut AC as a substitute for battery
+			// charge inhibition, including configs saved by earlier builds.
+			return nativeThermal.reconcile(false, conf.HeatPauseTemperatureCelsius(), conf.HeatResumeTemperatureCelsius())
+		}
+		return false
 	case compatibility.ChargeControlFirmware:
 		return maintainFirmwareChargeLimit()
 	case compatibility.ChargeControlLegacy:

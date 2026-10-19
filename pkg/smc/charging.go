@@ -53,14 +53,20 @@ func (c *AppleSMC) IsChargingEnabled() (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		return len(v.Bytes) == 1 && v.Bytes[0] == 0x00, nil
+		if len(v.Bytes) != 1 {
+			return false, fmt.Errorf("%s has incorrect data length %d, want 1", ChargingKey1, len(v.Bytes))
+		}
+		return v.Bytes[0] == 0x00, nil
 	}
 
 	v, err := c.Read(ChargingKey3)
 	if err != nil {
 		return false, err
 	}
-	return len(v.Bytes) == 4 && bytes.Equal(v.Bytes, []byte{0x00, 0x00, 0x00, 0x00}), nil
+	if len(v.Bytes) != 4 {
+		return false, fmt.Errorf("%s has incorrect data length %d, want 4", ChargingKey3, len(v.Bytes))
+	}
+	return bytes.Equal(v.Bytes, []byte{0x00, 0x00, 0x00, 0x00}), nil
 }
 
 // EnableCharging enables direct, legacy charging.

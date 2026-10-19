@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -9,6 +10,27 @@ import (
 
 	"github.com/charlie0129/batt/pkg/compatibility"
 )
+
+func TestHeatProtectionNeverOptsIntoAdapterDisconnection(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		client := &Client{httpClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.Method != http.MethodPut || request.URL.Path != "/heat-protection" {
+				t.Fatalf("unexpected request %s %s", request.Method, request.URL.Path)
+			}
+			var body map[string]any
+			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
+				t.Fatal(err)
+			}
+			if body["adapterMode"] == true || body["enabled"] != enabled {
+				t.Fatalf("heat request silently changed power source: %+v", body)
+			}
+			return &http.Response{StatusCode: http.StatusCreated, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`"ok"`))}, nil
+		})}}
+		if _, err := client.SetHeatProtection(enabled, 33, 30); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 

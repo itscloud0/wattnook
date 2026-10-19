@@ -18,11 +18,9 @@ app="$build_dir/WattNook.app"
 export GOCACHE="${GOCACHE:-${TMPDIR:-/tmp}/wattnook-go-cache}"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$project_dir/tools/app/Info.plist" "$app/Contents/Info.plist"
-cp "$project_dir/tools/app/WattNook" "$app/Contents/MacOS/WattNook"
-chmod +x "$app/Contents/MacOS/WattNook"
 (
   cd "$project_dir"
-  go build -o "$app/Contents/MacOS/batt-thermal" ./cmd/batt
+  go build -o "$app/Contents/MacOS/WattNook" ./cmd/batt
   swiftc -O -module-cache-path "${TMPDIR:-/tmp}/wattnook-swift-modules" \
     tools/keep-awake/Policy.swift tools/keep-awake/KeepAwake.swift -o "$app/Contents/MacOS/KeepAwake"
   icon_tmp=$(mktemp -d "${TMPDIR:-/tmp}/wattnook-icon.XXXXXX")

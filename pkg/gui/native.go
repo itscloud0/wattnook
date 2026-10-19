@@ -2,19 +2,41 @@ package gui
 
 /*
 #cgo CFLAGS: -mmacosx-version-min=13.0
-#cgo LDFLAGS: -mmacosx-version-min=13.0 -framework Cocoa -framework ServiceManagement -framework CoreFoundation -framework IOKit -framework QuartzCore
+#cgo LDFLAGS: -mmacosx-version-min=13.0 -framework Cocoa -framework ServiceManagement -framework CoreFoundation -framework IOKit -framework QuartzCore -framework Security
 #include <stdlib.h>
 #include "native.h"
 */
 import "C"
 
 import (
+	"encoding/json"
 	"fmt"
 	"runtime/cgo"
 	"unsafe"
 
+	"github.com/charlie0129/batt/pkg/cleanup"
+	"github.com/charlie0129/batt/pkg/compatibility"
 	"github.com/sirupsen/logrus"
 )
+
+func inspectStorageApplication(path string) (cleanup.AppIdentity, error) {
+	p := C.CString(path)
+	defer C.free(unsafe.Pointer(p))
+	raw := C.WattInspectStorageApplication(p)
+	if raw == nil {
+		return cleanup.AppIdentity{}, cleanup.ErrNotApplicationBundle
+	}
+	defer C.free(unsafe.Pointer(raw))
+	var app struct {
+		cleanup.AppIdentity
+		InspectionError string `json:"inspectionError"`
+	}
+	err := json.Unmarshal([]byte(C.GoString(raw)), &app)
+	if err == nil && app.InspectionError != "" {
+		err = fmt.Errorf("%s", app.InspectionError)
+	}
+	return app.AppIdentity, err
+}
 
 type menuItem int
 
@@ -183,6 +205,26 @@ func (m *nativeMenu) setLimit(limitPercent int) {
 	C.batt_menu_set_limit(m.ref, C.int(limitPercent))
 }
 
+func (m *nativeMenu) setLimitChoices(limits []int) {
+	values := make([]C.int, len(limits))
+	for i, v := range limits {
+		values[i] = C.int(v)
+	}
+	var ptr *C.int
+	if len(values) > 0 {
+		ptr = &values[0]
+	}
+	C.batt_menu_set_limit_choices(m.ref, ptr, C.int(len(values)))
+}
+
+func (m *nativeMenu) setHeatStatus(paused bool, temperatureCelsius float64) {
+	C.batt_menu_set_heat_status(m.ref, C.bool(paused), C.double(temperatureCelsius))
+}
+
+func (m *nativeMenu) setHeatDetail(detail string) {
+	withCString(detail, func(value *C.char) { C.batt_menu_set_heat_detail(m.ref, value) })
+}
+
 func (m *nativeMenu) setLiveStatus(chargePercent int, pluggedIn, charging, heatPaused bool) {
 	C.batt_menu_set_live_status(m.ref, C.int(chargePercent), C.bool(pluggedIn), C.bool(charging), C.bool(heatPaused))
 }
@@ -255,6 +297,30 @@ func controllerForHandle(handle C.uintptr_t) *menuController {
 	return cgo.Handle(handle).Value().(*menuController)
 }
 
+func runOnMain(callback func()) {
+	C.batt_dispatch_main(C.uintptr_t(cgo.NewHandle(callback)))
+}
+
+//export battStorageAction
+func battStorageAction(handle C.uintptr_t, generation C.uint64_t, action C.int) {
+	defer recoverNativeCallback("battStorageAction")
+	c := controllerForHandle(handle)
+	if c.storage == nil {
+		c.storage = newStorageAdapter(userStorageScan, runOnMain, func(g uint64, b []byte) {
+			withCString(string(b), func(value *C.char) { C.batt_menu_storage_update(c.menu.ref, C.uint64_t(g), value) })
+		})
+	}
+	c.storage.action(uint64(generation), int(action))
+}
+
+//export battMainCallback
+func battMainCallback(callback C.uintptr_t) {
+	defer recoverNativeCallback("battMainCallback")
+	handle := cgo.Handle(callback)
+	defer handle.Delete()
+	handle.Value().(func())()
+}
+
 func recoverNativeCallback(name string) {
 	if recovered := recover(); recovered != nil {
 		logrus.Errorf("panic in %s: %v", name, recovered)
@@ -282,7 +348,12 @@ func battMenuAction(handle C.uintptr_t, item C.int, checked C.bool) {
 //export battMenuSetLimit
 func battMenuSetLimit(handle C.uintptr_t, limit C.int) C.bool {
 	defer recoverNativeCallback("battMenuSetLimit")
-	return C.bool(controllerForHandle(handle).setLimit(normalizeDraggedLimit(int(limit))))
+	c := controllerForHandle(handle)
+	value := int(limit)
+	if c.capabilities.ChargeControlMode != compatibility.ChargeControlNative {
+		value = normalizeDraggedLimit(value)
+	}
+	return C.bool(c.setLimit(value))
 }
 
 func normalizeDraggedLimit(limit int) int {

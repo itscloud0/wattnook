@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-17T03:43:48+04:00",
+  "title": "Design System: WattNook",
+  "extensions": {
+    "colorMeta": {
+      "graphite-upper": {
+        "role": "neutral",
+        "displayName": "Graphite fallback upper surface",
+        "canonical": "NSColor calibrated RGB 0.13, 0.165, 0.21"
+      },
+      "graphite-lower": {
+        "role": "neutral",
+        "displayName": "Graphite fallback lower surface",
+        "canonical": "NSColor calibrated RGB 0.085, 0.12, 0.165"
+      }
+    },
+    "typographyMeta": {
+      "charge": { "displayName": "Charge", "purpose": "Battery percentage in the native power-flow header." },
+      "system-metric": { "displayName": "System metric", "purpose": "Aligned, tabular headline values on the System page." },
+      "action": { "displayName": "Action", "purpose": "Native destination and action labels." }
+    },
+    "motion": [
+      { "name": "energy-highlight", "value": "2.2s Core Animation locations repeat", "purpose": "Travels only while Battery is visible and Reduce Motion is off." }
+    ],
+    "nativePlatform": {
+      "material": "NSGlassEffectView grouped in NSGlassEffectContainerView when macOS 26 APIs are available; graphite fallback otherwise.",
+      "semanticColors": ["NSColor.labelColor", "NSColor.secondaryLabelColor", "NSColor.systemBlueColor", "NSColor.systemGreenColor", "NSColor.systemOrangeColor", "NSColor.controlAccentColor"],
+      "sources": ["pkg/gui/native_popover.m", "pkg/gui/native_power_flow.m", "pkg/gui/native_preferences.m"]
+    }
+  },
+  "components": [
+    {
+      "name": "Page destination",
+      "kind": "nav",
+      "refersTo": "page-destination",
+      "description": "Three grouped native AppKit buttons, each 112×28 pt with 8 pt gaps: Battery, System, Storage. The selected page gets a filled segment, not an underline. Source: pkg/gui/native_popover.m."
+    },
+    {
+      "name": "Battery action",
+      "kind": "button",
+      "refersTo": "battery-action",
+      "description": "44 pt native AppKit action with title and 10.5 pt subtitle. Unavailable heat moves to a Settings explanation; Keep Awake expands to 320 pt and Glass backing tracks the visible actions. Source: pkg/gui/native_popover.m."
+    },
+    {
+      "name": "Energy flow",
+      "kind": "custom",
+      "refersTo": "energy-flow",
+      "description": "Native-drawn closed flow silhouette with accessible charge-limit slider and visibility/Reduce-Motion-aware Core Animation highlight. Source: pkg/gui/native_power_flow.m."
+    },
+    {
+      "name": "Consumer row",
+      "kind": "custom",
+      "refersTo": "consumer-row",
+      "description": "34 pt native row: application icon, name, two right-aligned tabular readings, and an allowed normal Quit action. Six rows maximum. Source: pkg/gui/native_popover.m."
+    },
+    {
+      "name": "Storage review",
+      "kind": "custom",
+      "refersTo": "storage-review",
+      "description": "Embedded 400×450 pt Storage page: explicit Scan/Cancel/Rescan, Applications/App caches segments, name search, real macOS app icons and 44 pt native rows. Review opens inline details with a selectable full path and Show in Finder. Complete logical sizes are measured; partial/unknown sizes stay labeled. Inventories /Applications and ~/Applications to one vendor-folder level (up to 200 apps); exact uniquely mapped third-party ~/Library/Caches/<bundle-id> paths appear only after complete discovery. Metadata/basic code-signing classification does not fully validate bundle resources. UI says Read-only · Removal unavailable; leaving cancels and clears results. Source: pkg/gui/native_cleanup_view.m and pkg/cleanup/applications.go."
+    },
+    {
+      "name": "Keep Awake diagnostics",
+      "kind": "custom",
+      "refersTo": "keep-awake-diagnostics",
+      "description": "Separate stacked native diagnostics panel with semantic status/error labels and selectable monospaced report. Source: pkg/gui/native_awake_window.m."
+    }
+  ],
+  "narrative": {
+    "northStar": "Transit wayfinding for Mac power.",
+    "overview": "WattNook is an operable energy overview, not a stack of equally weighted controls: read charge and state first, follow the source-to-destination energy trace, then choose a deliberate action or deeper destination. The compact native surface stays quiet, spacious, and precise. It uses real AppKit Liquid Glass where available; it is not an HTML glass treatment.\n\nThe Battery, System, Settings, History, Storage review, and Keep Awake diagnostics all use native controls and platform typography. The full visual system replaces the former 360×480 visual guidance; behavior remains unchanged, including saved palettes/menu units, unavailable heat protection, and Keep Awake's `noScreenOff` policy.",
+    "keyCharacteristics": ["One headline state, three explicit destinations, and a directional energy trace.", "SF Pro with tabular readings; semantic labels over decorative color.", "A 24 pt inset and 4 pt rhythm make a small native utility legible."],
+    "rules": [
+      { "name": "Semantic-First", "body": "Do not replace AppKit semantic colors with fixed HTML approximations; appearance, accessibility, and the selected palette must remain live.", "section": "colors" },
+      { "name": "Measurement", "body": "Preserve tabular digits and whole-machine CPU normalization; do not turn compact units, unavailable values, or updating states into invented zeroes.", "section": "typography" },
+      { "name": "Destination", "body": "Page navigation is a filled selection; underline-like treatment is not reused for it. Battery, System, History, Settings, Storage review, and diagnostics stay distinct destinations rather than being compressed into one scroll.", "section": "layout" },
+      { "name": "Glass-Is-Platform", "body": "Do not claim a browser backdrop filter or a CSS shadow reproduces this material. Keep runtime Glass availability checks and the graphite fallback.", "section": "elevation" }
+    ],
+    "dos": ["Do keep 24 pt margins and the 4 pt rhythm in the popover.", "Do place every watt label outside the energy ribbon and name the source/destination.", "Do use the selected palette only for selection and energy; reserve green/orange for actual status.", "Do preserve visible-only, Reduce-Motion-aware flow animation and native focus/accessibility paths.", "Do retain Limit unavailable, unavailable heat, and telemetry-updating states as explicit truthful content."],
+    "donts": ["Don't reintroduce the former 360×480 layout, duplicate consumer rows on Battery, or squeeze History into System.", "Don't substitute fixed HTML colors, CSS Glass, glyph icons, or a display typeface for native AppKit semantics and SF Symbols.", "Don't make ribbon width a claimed quantitative power scale or draw separate ribbons with a seam.", "Don't hide saved palette/menu-unit behavior, convert unavailable data to zero, or add Screen off to Keep Awake."]
+  }
+}

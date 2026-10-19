@@ -87,9 +87,13 @@ void batt_menu_set_enabled(BattMenuRef menu, int item, bool enabled);
 void batt_menu_set_checked(BattMenuRef menu, int item, bool checked);
 void batt_menu_set_status_icon(BattMenuRef menu, bool installed, bool capable, bool needs_upgrade);
 void batt_menu_set_power(BattMenuRef menu, int item, const char *label, double value);
+void batt_menu_set_heat_status(BattMenuRef menu, bool paused, double temperature_celsius);
+void batt_menu_set_heat_detail(BattMenuRef menu, const char *detail);
 void batt_menu_set_power_flow(BattMenuRef menu, double adapter, double system, double battery,
                               bool heat_paused, double temperature_celsius);
 void batt_menu_set_limit(BattMenuRef menu, int limit_percent);
+void batt_menu_set_limit_choices(BattMenuRef menu, const int *values, int count);
+void batt_dispatch_main(uintptr_t callback);
 void batt_menu_set_live_status(BattMenuRef menu, int charge_percent, bool plugged_in,
                                bool charging, bool heat_paused);
 
@@ -106,5 +110,9 @@ extern void battMenuWillOpen(uintptr_t handle);
 extern void battMenuTimerFired(uintptr_t handle);
 extern void battMenuAction(uintptr_t handle, int item, bool checked);
 extern bool battMenuSetLimit(uintptr_t handle, int limit_percent);
+extern void battMainCallback(uintptr_t callback);
+extern void battStorageAction(uintptr_t handle, uint64_t generation, int action);
+char *WattInspectStorageApplication(const char *path);
+void batt_menu_storage_update(BattMenuRef menu, uint64_t generation, const char *json);
 
 #endif

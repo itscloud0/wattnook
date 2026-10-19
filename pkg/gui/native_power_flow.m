@@ -152,7 +152,7 @@ static NSString *Watts(double watts) {
     CAGradientLayer *_flowHighlight;
 }
 
-- (void)dealloc { [_flowHighlight release]; [super dealloc]; }
+- (void)dealloc { [_supportedLimits release]; [_flowHighlight release]; [super dealloc]; }
 - (void)setFlowAnimationEnabled:(BOOL)enabled {
     _flowAnimationEnabled = enabled && !NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion;
     if (!_flowAnimationEnabled) [_flowHighlight removeAllAnimations];
@@ -212,7 +212,7 @@ static NSString *Watts(double watts) {
 }
 
 - (void)setLimitPercent:(NSInteger)limitPercent {
-    _limitPercent = MAX(0, MIN(100, limitPercent));
+    _limitPercent = limitPercent < 0 ? -1 : MAX(0, MIN(100, limitPercent));
     if (!_limitDragging) _previewLimitPercent = _limitPercent;
     [self setNeedsDisplay:YES];
     [self.window invalidateCursorRectsForView:self];
@@ -236,7 +236,15 @@ static NSString *Watts(double watts) {
     double fraction = (point.x - NSMinX(rail)) / NSWidth(rail);
     NSInteger value = (NSInteger)round(fraction * 100.0 / 5.0) * 5;
     // 100% disables charging control; keep that explicit in the existing menu.
-    return MAX(20, MIN(95, value));
+    return [self snappedLimit:value];
+}
+
+- (NSInteger)snappedLimit:(NSInteger)value {
+    if (!self.supportedLimits.count) return MAX(20, MIN(95, value));
+    NSInteger closest = self.supportedLimits.firstObject.integerValue;
+    for (NSNumber *choice in self.supportedLimits)
+        if (labs(choice.integerValue-value) < labs(closest-value)) closest = choice.integerValue;
+    return closest;
 }
 
 - (void)updatePreviewWithEvent:(NSEvent *)event {
@@ -289,7 +297,7 @@ static NSString *Watts(double watts) {
 - (void)keyDown:(NSEvent *)event {
     if (self.limitEditable && (event.keyCode == 123 || event.keyCode == 124)) {
         NSInteger direction = event.keyCode == 123 ? -5 : 5;
-        _previewLimitPercent = MAX(20, MIN(95, self.displayedLimitPercent + direction));
+        _previewLimitPercent = [self snappedLimit:self.displayedLimitPercent + direction];
         [self commitPreview];
         return;
     }
@@ -308,12 +316,11 @@ static NSString *Watts(double watts) {
 - (NSString *)accessibilityRole { return NSAccessibilitySliderRole; }
 - (NSString *)accessibilityLabel { return @"Charge limit"; }
 - (id)accessibilityValue { return @(self.displayedLimitPercent); }
-- (id)accessibilityMinValue { return @20; }
-- (id)accessibilityMaxValue { return @95; }
+- (id)accessibilityMinValue { return self.supportedLimits.firstObject ?: @20; }
+- (id)accessibilityMaxValue { return self.supportedLimits.lastObject ?: @95; }
 - (void)accessibilitySetValue:(id)value {
     if (!self.limitEditable || ![value respondsToSelector:@selector(integerValue)]) return;
-    _previewLimitPercent = MAX(20, MIN(95,
-        (NSInteger)round([value doubleValue] / 5.0) * 5));
+    _previewLimitPercent = [self snappedLimit:(NSInteger)round([value doubleValue] / 5.0) * 5];
     [self commitPreview];
 }
 
@@ -327,30 +334,28 @@ static NSString *Watts(double watts) {
     NSInteger limit = self.displayedLimitPercent;
     BOOL adapter = self.hasTelemetry && self.pluggedIn && self.adapterWatts > 0.25;
     BOOL charging = self.hasTelemetry && self.batteryWatts > 0.25;
+    BOOL statusCharging = self.chargingStateKnown ? self.batteryCharging : charging;
     BOOL discharging = self.hasTelemetry && self.batteryWatts < -0.25;
     BOOL hybrid = adapter && discharging;
     BOOL atLimit = adapter && !charging && !discharging &&
-        limit < 100 && self.chargePercent >= limit - 1;
+        limit >= 0 && limit < 100 && self.chargePercent >= limit - 1;
     NSString *state = !self.hasTelemetry ? @"Power data unavailable" :
         (hybrid ? @"AC + battery" :
          (self.heatPaused && self.pluggedIn ? @"Charging paused · heat" :
-          (charging ? @"Charging" :
+          (statusCharging ? @"Charging" :
            (atLimit ? @"Charge limit reached" : (adapter ? @"Plugged in" : @"On battery")))));
     NSString *chargeText = self.chargePercent < 0 ? @"—%" :
         [NSString stringWithFormat:@"%ld%%", (long)charge];
 
-    NSString *batterySymbol = [NSString stringWithFormat:@"battery.%ldpercent",
-        (long)(charge >= 90 ? 100 : charge >= 65 ? 75 : charge >= 40 ? 50 : charge >= 15 ? 25 : 0)];
-    Symbol(batterySymbol, NSMakeRect(20, 180, 40, 28), 28, NSColor.labelColor);
-    Text(chargeText, NSMakeRect(67, 171, 145, 45), 36, NSFontWeightSemibold,
+    Text(chargeText, NSMakeRect(24, 158, 145, 60), 48, NSFontWeightSemibold,
          NSColor.labelColor, NSTextAlignmentLeft);
-    Text(state, NSMakeRect(20, 148, 235, 20), 12, NSFontWeightRegular,
+    Text(state, NSMakeRect(24, 140, 250, 18), 13, NSFontWeightRegular,
          NSColor.secondaryLabelColor, NSTextAlignmentLeft);
     if (self.temperatureCelsius > 0) {
         NSColor *temperatureColor = self.heatPaused && self.pluggedIn ?
             NSColor.systemOrangeColor : NSColor.labelColor;
         Text([NSString stringWithFormat:@"%.1f°C", self.temperatureCelsius],
-             NSMakeRect(right - 58, 185, 51, 20), 12, NSFontWeightMedium,
+             NSMakeRect(right - 70, 174, 66, 24), 14, NSFontWeightMedium,
              temperatureColor, NSTextAlignmentRight);
     }
 
@@ -360,7 +365,7 @@ static NSString *Watts(double watts) {
     [trackColor setFill];
     [[NSBezierPath bezierPathWithRoundedRect:rail xRadius:3 yRadius:3] fill];
     if (self.chargePercent >= 0 && charge > 0) {
-        NSColor *fillColor = charging ? NSColor.systemGreenColor :
+        NSColor *fillColor = statusCharging ? NSColor.systemGreenColor :
             (charge <= 20 ? NSColor.systemOrangeColor : WattAccentColor());
         [fillColor setFill];
         NSRect fill = rail;
@@ -369,7 +374,7 @@ static NSString *Watts(double watts) {
     }
     CGFloat markerX = [self markerX];
     [NSColor.labelColor setFill];
-    [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(markerX - 1.5, 126, 3, 16)
+    if (limit >= 0) [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(markerX - 1.5, 126, 3, 16)
                                      xRadius:2 yRadius:2] fill];
     // The controller's non-interactive label never intercepts marker dragging.
     [[NSColor colorWithCalibratedWhite:dark ? 0.28 : 0.80 alpha:1] setFill];

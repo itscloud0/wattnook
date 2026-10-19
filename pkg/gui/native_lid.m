@@ -24,6 +24,8 @@ void WattRecordAwakeEvent(NSString *event) {
 }
 NSString *WattAwakeReport(BattMenuController *controller) {
     NSString *status = !controller.keepAwakeStatus ? @"Unknown" : controller.keepAwakeStatus.boolValue ? @"On" : @"Off";
+    if (controller.keepAwakeStatusReading)
+        status = [NSString stringWithFormat:@"Refreshing (last confirmed: %@)",status];
     NSArray *events = [NSUserDefaults.standardUserDefaults arrayForKey:@"WattNookAwakeEvents"] ?: @[];
     NSMutableString *report = [NSMutableString stringWithFormat:
         @"Sleep prevention: %@\nStatus check: %@\nDisplay guard: %@\n\nRemote access is not monitored. Keeping macOS awake does not confirm a Codex connection.\n\nRecent events (local time):\n",
