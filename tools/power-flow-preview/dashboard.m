@@ -448,6 +448,10 @@ int main(int argc, const char *argv[]) {
         [c refreshStatusImage];
         assert([c.statusItem.button.accessibilityLabel containsString:@"SSD space used 73%"]);
         CGFloat withoutPercent = c.statusItem.button.image.size.width;
+        // A compatibility refresh on a healthy install must not collapse the
+        // live metrics image to the generic batteryblock symbol.
+        [c setStatusIconInstalled:YES capable:YES needsUpgrade:NO];
+        assert(c.statusItem.button.image.size.width == withoutPercent);
         [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"WattNookMenuBatteryIcon"];
         [c refreshStatusImage];
         assert(withoutPercent-c.statusItem.button.image.size.width >= 34);

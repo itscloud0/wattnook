@@ -120,7 +120,9 @@ func TestPrivateSnapshotRejectsSymlinkAndLoosePermissions(t *testing.T) {
 }
 
 func TestInvalidPreferencesCommandsDoNotMutate(t *testing.T) {
-	for _, target := range []int{0, 25, 79, 80, 100} {
+	// Only targets the native layer rejects before any write; an accepted
+	// target would write the caller's preferences domain.
+	for _, target := range []int{0, 25, 96, 100} {
 		if _, _, err := preferences(1, target, nil); err == nil {
 			t.Fatalf("target=%d accepted", target)
 		}

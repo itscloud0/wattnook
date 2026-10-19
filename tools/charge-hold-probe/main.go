@@ -254,6 +254,9 @@ func actor(dir string) (result error) {
 	if !original.Enabled || original.Limit != 80 {
 		return errors.New("original Apple 80% limit required")
 	}
+	if os.Getenv("WATTNOOK_PROBE_MODE") == "above" {
+		return actorAbove(c)
+	}
 	// Only the independent guardian restores preferences/native MCL, after
 	// this actor has exited. The pulse itself immediately restores CHIE.
 	// A noncharging baseline at Apple's existing 80% limit cannot demonstrate
@@ -325,6 +328,60 @@ func actor(dir string) (result error) {
 	}
 	fmt.Println("VERIFIED: requested limit retained, adapter restored, no charging/discharging in final consecutive samples")
 	return nil
+}
+
+// actorAbove tests a hold target ABOVE the current charge: does the Mac charge
+// up to the target and then stop on AC? One preferences hold, one pulse,
+// observation only; the guardian restores everything afterwards.
+func actorAbove(c adapter) error {
+	s, err := baseline(c)
+	if err != nil {
+		return err
+	}
+	target := s.Percent + 2
+	if target > 95 {
+		return errors.New("charge too high for an above-target test")
+	}
+	if _, _, err = preferences(1, target, nil); err != nil {
+		return err
+	}
+	fmt.Printf("one hold target=%d (current %d); one pulse=%s\n", target, s.Percent, pulseDuration)
+	if err = pulse(c, time.Sleep); err != nil {
+		return err
+	}
+	sawCharging, stable := false, 0
+	for i := 0; i < 40; i++ {
+		time.Sleep(10 * time.Second)
+		s, err = readSample()
+		if err != nil {
+			return err
+		}
+		_, observed, err := preferences(0, 0, nil)
+		if err != nil {
+			return err
+		}
+		v, err := adapterValue(c)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("sample=%+v CHIE=%02x requested=%d observed=%d\n", s, v, target, observed)
+		if !s.LidOpen || v != 0 || s.Percent > 96 || (i >= 1 && (!s.AC || !s.RawAC)) {
+			return errors.New("safety condition failed")
+		}
+		if s.Charging && s.CurrentMA > 100 {
+			sawCharging = true
+		}
+		if s.Percent >= target && held(s, target, observed) {
+			stable++
+		} else {
+			stable = 0
+		}
+		if sawCharging && stable >= 3 {
+			fmt.Println("VERIFIED: charged up to the target and held there on AC")
+			return nil
+		}
+	}
+	return fmt.Errorf("above-target hold NOT verified (sawCharging=%v)", sawCharging)
 }
 
 func recoverOriginal(c adapter, snapshot []byte) error {
@@ -465,7 +522,11 @@ func guard(dir string) (result error) {
 	}()
 	cmd := exec.Command(os.Args[0], "--actor", dir)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	return executeActor(cmd, actorDeadline, func() { armed = true })
+	deadline := actorDeadline
+	if os.Getenv("WATTNOOK_PROBE_MODE") == "above" {
+		deadline = 460 * time.Second
+	}
+	return executeActor(cmd, deadline, func() { armed = true })
 }
 
 func run() error {
@@ -501,7 +562,7 @@ func run() error {
 	go func() { done <- cmd.Wait() }()
 	select {
 	case err = <-done:
-	case <-time.After(220 * time.Second):
+	case <-time.After(540 * time.Second):
 		// Do not kill the recovery owner while it may still own the writer.
 		return errors.New("supervisor deadline: detached recovery owner still running; inspect private record")
 	}
@@ -518,6 +579,10 @@ func main() {
 		_ = json.NewEncoder(os.Stdout).Encode(s)
 	} else if os.Geteuid() != 0 {
 		err = errors.New("administrator required; no mutation performed")
+	} else if len(os.Args) == 2 && os.Args[1] == "--run-above" {
+		// Children inherit the mode through the environment.
+		_ = os.Setenv("WATTNOOK_PROBE_MODE", "above")
+		err = run()
 	} else if len(os.Args) == 2 && os.Args[1] == "--run-once" {
 		err = run()
 	} else if len(os.Args) == 3 && os.Args[1] == "--guard" {
@@ -527,7 +592,7 @@ func main() {
 	} else if len(os.Args) == 3 && os.Args[1] == "--recover" {
 		err = recoverRecord(os.Args[2])
 	} else {
-		err = errors.New("usage: charge-hold-probe --read-only | --run-once")
+		err = errors.New("usage: charge-hold-probe --read-only | --run-once | --run-above")
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

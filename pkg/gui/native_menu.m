@@ -533,6 +533,10 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
 - (void)setStatusIconInstalled:(BOOL)installed
                        capable:(BOOL)capable
                   needsUpgrade:(BOOL)needsUpgrade {
+    // A healthy install keeps the live metrics image; the generic symbol is
+    // only for setup states. Replacing it here collapsed the menu-bar item
+    // after every action until the next stats tick.
+    if (installed && capable && !needsUpgrade) { [self refreshStatusImage]; return; }
     self.batteryColorView.hidden = YES;
     NSString *symbol = @"minus.plus.batteryblock";
     NSString *description = @"batt icon";

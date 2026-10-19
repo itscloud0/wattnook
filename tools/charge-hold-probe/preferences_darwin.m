@@ -35,8 +35,8 @@ int hold_preferences(int operation, int target, void *input, int inputSize,
     @autoreleasepool {
         @try {
             if (operation == 1) {
-                if (target < 26 || target > 78)
-                    @throw [NSException exceptionWithName:@"Target" reason:@"probe target outside 26–78" userInfo:nil];
+                if (target < 26 || target > 95)
+                    @throw [NSException exceptionWithName:@"Target" reason:@"probe target outside 26–95" userInfo:nil];
                 for (NSString *key in [keys() subarrayWithRange:NSMakeRange(0, 3)]) setValue(key, nil);
                 setValue(@"mclLimitValue", @(target));
                 setValue(@"MCLFeatureState", @1);
