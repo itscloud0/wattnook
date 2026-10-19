@@ -328,3 +328,40 @@ func TestNativeCustomLimitAPI(t *testing.T) {
 		t.Fatalf("back to Apple: %d custom=%d active=%v applied=%v", code, conf.CustomChargeLimit(), holder.active, applied)
 	}
 }
+
+func TestCustomLimitHoldFollowsChargeDownOnlyOnAC(t *testing.T) {
+	h, holder, s := newHoldFixture(heatHoldSample{Temperature: 25, Percent: 81, PluggedIn: true})
+	h.customLimit = func() int { return 70 }
+	h.reconcile(false, 35, 32)
+	if len(holder.holds) != 1 || holder.holds[0] != 81 {
+		t.Fatalf("parked hold: %v", holder.holds)
+	}
+	// Draining on battery never pulses the adapter.
+	s.PluggedIn = false
+	for _, percent := range []int{79, 74, 65} {
+		s.Percent = percent
+		h.reconcile(false, 35, 32)
+	}
+	if len(holder.retargets) != 0 {
+		t.Fatalf("retargeted on battery: %v", holder.retargets)
+	}
+	// Back on AC at 65%: the target drops to the limit, not back to 81.
+	s.PluggedIn = true
+	h.reconcile(false, 35, 32)
+	if len(holder.retargets) != 1 || holder.retargets[0] != 70 {
+		t.Fatalf("replug retarget: %v", holder.retargets)
+	}
+	h.reconcile(false, 35, 32)
+	if len(holder.retargets) != 1 {
+		t.Fatalf("retargeted again at the limit: %v", holder.retargets)
+	}
+	// Above-limit replug: parks at the new, lower charge.
+	h2, holder2, s2 := newHoldFixture(heatHoldSample{Temperature: 25, Percent: 81, PluggedIn: true})
+	h2.customLimit = func() int { return 70 }
+	h2.reconcile(false, 35, 32)
+	s2.Percent = 76
+	h2.reconcile(false, 35, 32)
+	if len(holder2.retargets) != 1 || holder2.retargets[0] != 76 {
+		t.Fatalf("partial drain: %v", holder2.retargets)
+	}
+}

@@ -227,8 +227,14 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 		return
 	}
 
+	// A limit hold parked above the limit follows the charge down: once the
+	// battery has drained (e.g. on battery) and is back on AC, lower the target
+	// so it never charges back above the limit. Only on AC, so draining on
+	// battery does not pulse the adapter for every percent.
+	drained := !hot && active && !h.forHeat && h.forLimit == custom && sample.PluggedIn &&
+		h.target > custom && sample.Percent < h.target
 	// Already held for exactly this reason: leave it alone.
-	if active && hot == h.forHeat && (hot || h.forLimit == custom) {
+	if active && !drained && hot == h.forHeat && (hot || h.forLimit == custom) {
 		status.Requested = "held"
 		if hot {
 			status.Reason = "cooling"
