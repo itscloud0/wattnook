@@ -88,8 +88,11 @@ func TestHoldRequiresPhysicalACActualPauseAndRetainedTarget(t *testing.T) {
 	if held(good, 68, 80) {
 		t.Fatal("Apple clamped target to80 accepted")
 	}
-	if held(good, 70, 70) {
-		t.Fatal("already at target accepted")
+	if !held(good, 70, 70) {
+		t.Fatal("hold at current charge rejected")
+	}
+	if held(good, 72, 72) {
+		t.Fatal("charge below target accepted")
 	}
 }
 

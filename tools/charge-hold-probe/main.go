@@ -24,7 +24,7 @@ import (
 
 const key = "CHIE"
 const pulseDuration = 500 * time.Millisecond
-const actorDeadline = 100 * time.Second
+const actorDeadline = 170 * time.Second
 
 type sample struct {
 	Percent   int  `json:"percent"`
@@ -175,7 +175,7 @@ func pulse(c adapter, sleep func(time.Duration)) (err error) {
 }
 
 func held(s sample, requested, observed int) bool {
-	return s.LidOpen && s.AC && s.RawAC && !s.Charging && math.Abs(float64(s.CurrentMA)) <= 100 && observed == requested && s.Percent > requested
+	return s.LidOpen && s.AC && s.RawAC && !s.Charging && math.Abs(float64(s.CurrentMA)) <= 100 && observed == requested && s.Percent >= requested
 }
 
 func privateFile(path string) ([]byte, error) {
@@ -282,7 +282,9 @@ func actor(dir string) (result error) {
 	if stable < 3 {
 		return errors.New("stable active charging baseline not established; no hold or pulse issued")
 	}
-	target := min(78, s.Percent-2)
+	// AlDente's hold uses the truncated current percentage. A target below
+	// the current charge makes macOS discharge toward it while on AC.
+	target := min(78, s.Percent)
 	if _, _, err = preferences(1, target, nil); err != nil {
 		return err
 	}
@@ -291,7 +293,7 @@ func actor(dir string) (result error) {
 		return err
 	}
 	stable = 0
-	for i := 0; i < 12; i++ {
+	for i := 0; i < 24; i++ {
 		time.Sleep(5 * time.Second)
 		s, err = readSample()
 		if err != nil {
@@ -499,7 +501,7 @@ func run() error {
 	go func() { done <- cmd.Wait() }()
 	select {
 	case err = <-done:
-	case <-time.After(150 * time.Second):
+	case <-time.After(220 * time.Second):
 		// Do not kill the recovery owner while it may still own the writer.
 		return errors.New("supervisor deadline: detached recovery owner still running; inspect private record")
 	}

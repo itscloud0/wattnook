@@ -86,3 +86,28 @@ The old temporary artifact and assembly files were no longer present. Restored t
 **Next gate:** an independently restored, separately authorized one-shot test of this exact sequence. Require an open lid, saved work, stable AC and active charging baseline, a private snapshot of the touched preferences, one pulse only, independent bounded recovery of both adapter and preferences, and post-pulse AC/charging/current observations. Native-limit readback alone is not success. At the latest read-only sample, the Mac was already at 80% on AC with zero current/not charging due to its existing Apple 80% limit; that is **not a usable causal test baseline** and must not be called a successful custom thermal pause. Keep the existing limit and adapter restored pending the new test scope.
 
 Subsequent approved guarded attempt: [complete-hold probe preparation and baseline outcome](thermal-pause-progress.md#complete-hold-probe-preparation-and-guarded-baseline-attempt--2026-10-19). Native 90% was temporarily verified but the Mac did not resume active charging in the 20-second baseline window. Actor aborted before both the preferences hold and CHIE pulse; independent recovery verified original preferences and native 80%. The complete physical hold question is still unresolved, not disproven by this aborted baseline.
+
+## Second guarded attempt — 2026-10-19 19:01
+
+Run from `<repo>` checkout, record `/private/tmp/wattnook-charge-hold-2446925791`. Preflight 80%, AC, 0 mA, not charging (Apple 80% hold). Native limit temporarily raised to 90%; ten baseline samples over 20 s stayed at 0 mA / not charging. Actor aborted before preferences hold and CHIE pulse. Recovery: adapter ok, preferences restored, Apple limit 80 enabled. Same outcome as the 02:32 attempt: raising the native limit does not resume charging within 20 s. Next attempt needs a battery below ~78% with active charging (e.g. unplug, discharge a few percent, replug) before starting the probe.
+
+## Third attempt — first complete sequence, 2026-10-19 ~19:30
+
+Record `/private/tmp/wattnook-charge-hold-2737169284`. Baseline 77%, AC, charging +1647 mA (3 stable samples). Hold target 75 (current −2), preferences hold + notification, one CHIE `08`→500 ms→`00` pulse.
+
+- Immediately after the pulse: IsCharging=false, AC and raw AC retained, CHIE=00, `mclLimitValue` stayed 75 for the whole 60 s window. **The pulse makes the below-80 target stick** (preferences-only test at 02:xx was reset to 80).
+- ioreg `Amperage` is stale (~60 s update): it reported +2738 mA for 55 s with IsCharging=false, then −1177 mA. Battery was **discharging on AC** toward the 75% target (pmset: "AC attached; not charging"). Not acceptable for Heat Protection.
+- Recovery ok (adapter, preferences, Apple 80%). Discharge continued ~1 min after restore, then charging resumed at +2738 mA, NotChargingReason 0.
+
+Conclusion: the AlDente sequence does control charging on this Mac. A target below the current charge = discharge on AC. Probe changed to hold at the truncated current percentage (as AlDente does); `held` now accepts percent == target. Repeat attempt missed the window (battery reached 80% before sudo). Next: rerun the same probe with a fresh charging baseline below ~78%, and sample longer to cover the stale-current lag.
+
+## Fourth attempt — VERIFIED charge-only hold, 2026-10-19
+
+Record `/private/tmp/wattnook-charge-hold-3426435719`. Baseline 72%, AC, charging +2041 mA (3 stable samples). Hold target = current 72% (AlDente semantics), preferences hold + notification, one CHIE `08`→500 ms→`00` pulse, 24 samples over 120 s.
+
+- IsCharging=false from the first post-pulse sample; AC and raw AC retained; CHIE=00; `mclLimitValue` stayed 72 throughout.
+- Amperage showed a stale +2372 mA for ~55 s, then 0 mA for the remaining 13 samples (~65 s). Percent stayed 72. No discharge.
+- Probe verdict: **VERIFIED** — limit retained, adapter restored, neither charging nor discharging.
+- Recovery ok: adapter, preferences, Apple limit 80 enabled.
+
+This is the behaviour Heat Protection needs on macOS 27 / M4: Mac on AC, battery paused. Mechanism = topoffprotection hold at current percent + notification + one 500 ms CHIE pulse. Release = restore preferences (+ native limit) so charging resumes (observed ~1–2 min lag in attempt 3).
