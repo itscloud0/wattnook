@@ -11,12 +11,13 @@ import (
 )
 
 type holderFixture struct {
-	active   bool
-	saved    int
-	holds    []int
-	releases int
-	failHold error
-	failRel  error
+	active    bool
+	saved     int
+	holds     []int
+	releases  int
+	retargets []int
+	failHold  error
+	failRel   error
 }
 
 func (h *holderFixture) Active() bool            { return h.active }
@@ -27,6 +28,10 @@ func (h *holderFixture) Hold(target int) error {
 		return h.failHold
 	}
 	h.active, h.saved = true, 80
+	return nil
+}
+func (h *holderFixture) Retarget(target int) error {
+	h.retargets = append(h.retargets, target)
 	return nil
 }
 func (h *holderFixture) Release() error {
@@ -239,4 +244,87 @@ func getHeatProtectionStatusUnchecked() HeatProtectionStatus {
 	heatProtectionMu.RLock()
 	defer heatProtectionMu.RUnlock()
 	return heatProtectionStatus
+}
+
+func TestCustomLimitHoldsAtLimitOrCurrentCharge(t *testing.T) {
+	for name, tc := range map[string]struct{ percent, want int }{
+		"charges up to the limit": {60, 70},
+		"never discharges on AC":  {76, 76},
+	} {
+		h, holder, _ := newHoldFixture(heatHoldSample{Temperature: 25, Percent: tc.percent, PluggedIn: true})
+		h.customLimit = func() int { return 70 }
+		h.reconcile(false, 35, 32)
+		if len(holder.holds) != 1 || holder.holds[0] != tc.want {
+			t.Fatalf("%s: holds=%v", name, holder.holds)
+		}
+		h.reconcile(false, 35, 32)
+		if len(holder.holds) != 1 || len(holder.retargets) != 0 {
+			t.Fatalf("%s: re-held without a reason change", name)
+		}
+	}
+}
+
+func TestCustomLimitWaitsForAdapter(t *testing.T) {
+	h, holder, _ := newHoldFixture(heatHoldSample{Temperature: 25, Percent: 60})
+	h.customLimit = func() int { return 70 }
+	h.reconcile(false, 35, 32)
+	if len(holder.holds) != 0 {
+		t.Fatal("held on battery")
+	}
+}
+
+func TestHeatAndCustomLimitShareOneHold(t *testing.T) {
+	h, holder, s := newHoldFixture(heatHoldSample{Temperature: 25, Percent: 60, PluggedIn: true})
+	limit := 70
+	h.customLimit = func() int { return limit }
+	h.reconcile(true, 35, 32)
+	if len(holder.holds) != 1 || holder.holds[0] != 70 {
+		t.Fatalf("limit hold: %v", holder.holds)
+	}
+	// Heat pauses at the current charge: one retarget, still one snapshot.
+	s.Temperature = 36
+	h.reconcile(true, 35, 32)
+	if len(holder.holds) != 1 || len(holder.retargets) != 1 || holder.retargets[0] != 60 || !getHeatProtectionStatusUnchecked().Paused {
+		t.Fatalf("heat retarget: holds=%v retargets=%v", holder.holds, holder.retargets)
+	}
+	// Cooling returns to the limit without releasing.
+	s.Temperature = 30
+	h.reconcile(true, 35, 32)
+	if holder.releases != 0 || len(holder.retargets) != 2 || holder.retargets[1] != 70 || getHeatProtectionStatusUnchecked().Paused {
+		t.Fatalf("cool retarget: retargets=%v releases=%d", holder.retargets, holder.releases)
+	}
+	// Clearing the limit with Heat Protection idle releases the hold.
+	limit = 0
+	h.reconcile(true, 35, 32)
+	if holder.releases != 1 || holder.active {
+		t.Fatalf("release: %d", holder.releases)
+	}
+}
+
+func TestNativeCustomLimitAPI(t *testing.T) {
+	holder, _ := setupHeatHoldAPI(t)
+	capabilities.SupportedLimits = append(append([]int{}, customChargeLimits...), 80, 85, 90, 95, 100)
+	heatHold.customLimit = func() int { return conf.CustomChargeLimit() }
+	router := setupRoutes()
+	put := func(limit string) int {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("PUT", "/limit", strings.NewReader(limit)))
+		return w.Code
+	}
+	if code := put("65"); code != 201 || conf.CustomChargeLimit() != 65 || len(holder.holds) != 1 || holder.holds[0] != 72 {
+		t.Fatalf("custom: %d limit=%d holds=%v", code, conf.CustomChargeLimit(), holder.holds)
+	}
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/limit", nil))
+	if strings.TrimSpace(w.Body.String()) != "65" {
+		t.Fatalf("GET /limit %s", w.Body.String())
+	}
+	if code := put("67"); code != 400 {
+		t.Fatalf("unsupported value accepted: %d", code)
+	}
+	var applied []int
+	heatHold.setLimit = func(limit int) error { applied = append(applied, limit); return nil }
+	if code := put("90"); code != 201 || conf.CustomChargeLimit() != 0 || holder.active || len(applied) != 1 || applied[0] != 90 {
+		t.Fatalf("back to Apple: %d custom=%d active=%v applied=%v", code, conf.CustomChargeLimit(), holder.active, applied)
+	}
 }

@@ -30,6 +30,10 @@ func getConfig(c *gin.Context) {
 
 func getLimit(c *gin.Context) {
 	if capabilities.ChargeControlMode == compatibility.ChargeControlNative {
+		if custom := conf.CustomChargeLimit(); custom > 0 && heatHold != nil {
+			c.IndentedJSON(http.StatusOK, custom)
+			return
+		}
 		maintainLoopInnerLock.Lock()
 		saved, held := heatHold.savedAppleLimit()
 		maintainLoopInnerLock.Unlock()

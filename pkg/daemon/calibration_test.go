@@ -27,7 +27,11 @@ type mockConf struct {
 	thermalAdapter      bool
 	heatPause           float64
 	heatResume          float64
+	customLimit         int
 }
+
+func (m *mockConf) CustomChargeLimit() int     { return m.customLimit }
+func (m *mockConf) SetCustomChargeLimit(v int) { m.customLimit = v }
 
 func (m *mockConf) UpperLimit() int               { return m.upper }
 func (m *mockConf) LowerLimit() int               { return m.lower }

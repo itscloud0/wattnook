@@ -123,7 +123,7 @@ func (c *menuController) setLimit(limit int) bool {
 				if writeErr != nil {
 					showAlert("Charge limit not changed", writeErr.Error())
 				} else if readErr != nil {
-					showAlert("Apple charge limit unavailable", readErr.Error())
+					showAlert("Charge limit unavailable", readErr.Error())
 				}
 			})
 		}()

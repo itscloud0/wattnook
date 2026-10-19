@@ -38,3 +38,13 @@ Backups: daemon `/private/tmp/wattnook-daemon-backup.h824t5`, GUI `/private/tmp/
 ## Not yet verified
 
 - Long holds (hours), sleep/wake while held, crash recovery on a real daemon restart while held.
+
+## Hold target above the current charge — 2026-10-20 00:36
+
+`charge-hold-probe --run-above`, record `/private/tmp/wattnook-charge-hold-3542841754`. Apple limit 80, battery 80%, AC, not charging. Hold target 82 + one CHIE pulse. After ~50 s charging started (+2629 mA), reached 81% then 82%, then stopped: 0 mA, AC retained, `mclLimitValue` 82 throughout. VERIFIED; recovery restored Apple 80%.
+
+So the hold is a full charge limit: below the current charge it discharges on AC to the target (attempt 3 above), above it it charges to the target and stops. This enables limits outside Apple's 80/85/90/95/100.
+
+## Charge limits below 80% (custom limits)
+
+With `chargeHold`, `/compatibility` advertises 50/55/60/65/70/75 ahead of Apple's 80–100. Choosing one saves `customChargeLimit`, keeps Apple's limit at 80% underneath as a backstop and holds at the custom limit; if the battery is already above it, the hold stays at the current charge (no discharge on AC). Heat Protection and the custom limit share one hold and one snapshot: heat retargets to the current charge, cooling retargets back to the limit, each with a single pulse. Choosing an Apple value clears the custom limit and releases the hold (or defers the Apple value while heat still holds).

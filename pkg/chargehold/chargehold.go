@@ -205,6 +205,24 @@ func (h *Holder) Hold(target int) (err error) {
 	return nil
 }
 
+// Retarget moves an active hold to a new target: one preferences write and
+// one pulse, keeping the original snapshot for Release.
+func (h *Holder) Retarget(target int) error {
+	if target < MinTarget || target > MaxTarget {
+		return fmt.Errorf("hold target %d outside %d–%d", target, MinTarget, MaxTarget)
+	}
+	if !h.Active() {
+		return errors.New("no active charge hold")
+	}
+	if err := h.Prefs.Hold(target); err != nil {
+		return fmt.Errorf("write charge hold: %w", err)
+	}
+	if err := Pulse(h.SMC, h.Sleep); err != nil {
+		return fmt.Errorf("adapter pulse: %w", err)
+	}
+	return nil
+}
+
 // Release restores the saved preferences. The record is removed once the
 // preferences are restored, so a failing pulse is never repeated by retries.
 func (h *Holder) Release() error {

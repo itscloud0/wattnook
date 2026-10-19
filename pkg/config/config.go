@@ -24,6 +24,9 @@ type Config interface {
 	ThermalAdapterEnabled() bool
 	HeatPauseTemperatureCelsius() float64
 	HeatResumeTemperatureCelsius() float64
+	// CustomChargeLimit is a native-mode limit outside Apple's advertised
+	// values, enforced through a charge hold (0 = none).
+	CustomChargeLimit() int
 
 	SetUpperLimit(int)
 	SetLowerLimit(int)
@@ -41,6 +44,7 @@ type Config interface {
 	ClearAdapterDisableTimer()
 	SetHeatProtection(bool, float64, float64)
 	SetThermalAdapterEnabled(bool)
+	SetCustomChargeLimit(int)
 
 	LogrusFields() logrus.Fields
 

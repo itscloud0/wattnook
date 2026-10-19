@@ -16,8 +16,13 @@ func detectCapabilities() compatibility.Capabilities {
 	mode := smcConn.ChargeControlMode()
 	if mode == compatibility.ChargeControlUnsupported && nativeCharge != nil {
 		if state, err := nativeCharge.Read(); err == nil {
-			return compatibility.Capabilities{ChargingControl: true, ChargeControlMode: compatibility.ChargeControlNative, SupportedLimits: state.Limits,
-				ThermalAdapter: smcConn.HasKey("CHIE"), ChargeHold: smcConn.HasKey("CHIE")}
+			limits := state.Limits
+			hold := smcConn.HasKey("CHIE")
+			if hold {
+				limits = append(append([]int{}, customChargeLimits...), state.Limits...)
+			}
+			return compatibility.Capabilities{ChargingControl: true, ChargeControlMode: compatibility.ChargeControlNative, SupportedLimits: limits,
+				ThermalAdapter: hold, ChargeHold: hold}
 		}
 	}
 	legacy := mode == compatibility.ChargeControlLegacy
@@ -96,6 +101,11 @@ func disableUnsupportedConfiguredFeatures() {
 		(conf.HeatProtectionEnabled() || conf.ThermalAdapterEnabled()) {
 		conf.SetHeatProtection(false, conf.HeatPauseTemperatureCelsius(), conf.HeatResumeTemperatureCelsius())
 		conf.SetThermalAdapterEnabled(false)
+		changed = true
+	}
+	if conf.CustomChargeLimit() > 0 && !capabilities.ChargeHold {
+		// A limit below Apple's choices is only enforceable with the hold.
+		conf.SetCustomChargeLimit(0)
 		changed = true
 	}
 	if !capabilities.SleepHooks {

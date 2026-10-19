@@ -246,3 +246,24 @@ func TestStoreRejectsUnsafeRecord(t *testing.T) {
 		t.Fatal("world-readable record accepted")
 	}
 }
+
+func TestRetargetKeepsSnapshotAndPulsesOnce(t *testing.T) {
+	h, prefs, smc, _ := newHolder(t)
+	if err := h.Retarget(70); err == nil {
+		t.Fatal("retarget without a hold accepted")
+	}
+	if err := h.Hold(72); err != nil {
+		t.Fatal(err)
+	}
+	prefs.ops, smc.writes = nil, nil
+	if err := h.Retarget(70); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(prefs.ops, []string{"hold"}) || prefs.held != 70 || !reflect.DeepEqual(smc.writes, []byte{8, 0}) {
+		t.Fatalf("ops=%v held=%d writes=%v", prefs.ops, prefs.held, smc.writes)
+	}
+	prefs.ops = nil
+	if err := h.Release(); err != nil || !reflect.DeepEqual(prefs.ops, []string{"restore:original"}) {
+		t.Fatalf("release err=%v ops=%v", err, prefs.ops)
+	}
+}

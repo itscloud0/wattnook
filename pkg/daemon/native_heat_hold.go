@@ -24,6 +24,7 @@ type chargeHolder interface {
 	Active() bool
 	SavedLimit() (int, bool)
 	Hold(target int) error
+	Retarget(target int) error
 	Release() error
 }
 
@@ -36,8 +37,13 @@ type nativeHeatHold struct {
 	sample     func() (heatHoldSample, error)
 	appleLimit func() (int, error)
 	setLimit   func(int) error
-	// pendingLimit is a charge limit chosen while held (0 = none).
+	// pendingLimit is an Apple limit chosen while held (0 = none).
 	pendingLimit int
+	customLimit  func() int
+	// Why the active hold exists and where it is.
+	forHeat  bool
+	forLimit int
+	target   int
 	// fault stops further transitions until Heat Protection is re-enabled.
 	fault          string
 	lastTransition time.Time
@@ -103,7 +109,8 @@ func initializeHeatHold(configPath string) {
 			}
 			return state.EffectiveLimit(), nil
 		},
-		setLimit: func(limit int) error { return nativeCharge.SetLimit(limit) },
+		setLimit:    func(limit int) error { return nativeCharge.SetLimit(limit) },
+		customLimit: func() int { return conf.CustomChargeLimit() },
 	}
 }
 
@@ -117,7 +124,8 @@ func (h *nativeHeatHold) release() error {
 		return err
 	}
 	h.lastTransition = time.Now()
-	logrus.Info("heat protection resumed charging")
+	h.target = 0
+	logrus.Info("charge hold released; charging follows Apple's limit")
 	if limit := h.pendingLimit; limit > 0 {
 		h.pendingLimit = 0
 		if err := h.setLimit(limit); err != nil {
@@ -134,7 +142,7 @@ func (h *nativeHeatHold) publish(status HeatProtectionStatus) {
 	status.Mechanism = "charge-hold"
 	status.UpdatedAt = time.Now()
 	status.LastTransition = h.lastTransition
-	status.Paused = status.Enabled && h.holder.Active()
+	status.Paused = status.Enabled && h.holder.Active() && h.forHeat
 	status.Observed = "released"
 	if h.holder.Active() {
 		status.Observed = "held"
@@ -148,22 +156,31 @@ func (h *nativeHeatHold) publish(status HeatProtectionStatus) {
 	heatProtectionMu.Unlock()
 }
 
-// reconcile applies the hysteresis: hold when hot on AC below Apple's limit,
-// release once cool. A sensor error never starts a hold and never releases
-// one; the next valid reading decides.
+// reconcile drives one charge hold for two reasons: Heat Protection (hold at
+// the current charge while hot) and a custom charge limit below Apple's
+// choices (hold at the limit, or at the current charge when already above
+// it; the Mac is never discharged on AC to reach a limit). The hold is moved
+// only when its reason changes, never on percentage drift, so the adapter is
+// pulsed once per transition. A sensor error never starts or ends a hold.
 func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 	status := HeatProtectionStatus{Enabled: enabled, PauseTemperatureCelsius: pause, ResumeTemperatureCelsius: resume}
 	defer func() { h.publish(status) }()
-
+	custom := 0
+	if h.customLimit != nil {
+		custom = h.customLimit()
+	}
 	if !enabled {
 		h.fault = ""
-		if err := h.release(); err != nil {
-			logrus.WithError(err).Error("heat protection release")
-		}
 		status.Reason = "disabled"
-		return
 	}
 	if h.fault != "" {
+		return
+	}
+	if !enabled && custom == 0 {
+		h.forHeat, h.forLimit = false, 0
+		if err := h.release(); err != nil {
+			logrus.WithError(err).Error("charge hold release")
+		}
 		return
 	}
 	sample, err := h.sample()
@@ -172,51 +189,84 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 		return
 	}
 	temperature := sample.Temperature
-	status.TemperatureCelsius = &temperature
+	if enabled {
+		status.TemperatureCelsius = &temperature
+	}
+	active := h.holder.Active()
 
-	if h.holder.Active() {
-		status.Requested = "held"
-		if temperature > resume {
-			status.Reason = "cooling"
+	hot := false
+	if enabled {
+		if h.forHeat && active {
+			hot = temperature > resume
+		} else {
+			hot = temperature >= pause
+		}
+	}
+	if hot && custom == 0 && !(h.forHeat && active) {
+		// Without a custom limit, Apple's own limit may already stop charging.
+		limit, err := h.appleLimit()
+		if err != nil {
+			status.LastError = err.Error()
 			return
 		}
-		status.Requested = "released"
-		if err := h.release(); err != nil {
-			logrus.WithError(err).Error("heat protection release")
+		if sample.Percent >= limit {
+			status.Reason = "at Apple charge limit"
+			hot = false
+		}
+	}
+	if !hot && custom == 0 {
+		h.forHeat, h.forLimit = false, 0
+		if active {
+			status.Requested = "released"
+			if err := h.release(); err != nil {
+				logrus.WithError(err).Error("charge hold release")
+			}
+		} else if enabled && temperature >= pause && status.Reason == "" {
+			status.Reason = "watching"
 		}
 		return
 	}
 
-	status.Requested = "released"
-	if temperature < pause {
+	// Already held for exactly this reason: leave it alone.
+	if active && hot == h.forHeat && (hot || h.forLimit == custom) {
+		status.Requested = "held"
+		if hot {
+			status.Reason = "cooling"
+		}
 		return
 	}
-	if !sample.PluggedIn {
+	if !active && !sample.PluggedIn {
 		status.Reason = "on battery"
 		return
 	}
-	limit, err := h.appleLimit()
-	if err != nil {
-		status.LastError = err.Error()
-		return
+	target := sample.Percent
+	if !hot && custom > target {
+		target = custom
 	}
-	if sample.Percent >= limit {
-		// Apple's own limit already keeps the battery from charging.
-		status.Reason = "at Apple charge limit"
-		return
-	}
-	if sample.Percent < chargehold.MinTarget {
-		status.Reason = "battery too low to pause"
+	if target < chargehold.MinTarget || target > chargehold.MaxTarget {
+		status.Reason = "battery outside hold range"
 		return
 	}
 	status.Requested = "held"
-	if err := h.holder.Hold(sample.Percent); err != nil {
-		h.fault = err.Error()
-		logrus.WithError(err).Error("heat protection hold")
+	if active && target == h.target {
+		// Same target, new reason (e.g. heat starts at the limit): no pulse.
+		h.forHeat, h.forLimit = hot, custom
 		return
 	}
+	if active {
+		err = h.holder.Retarget(target)
+	} else {
+		err = h.holder.Hold(target)
+	}
+	if err != nil {
+		h.fault = err.Error()
+		logrus.WithError(err).Error("charge hold")
+		return
+	}
+	h.forHeat, h.forLimit, h.target = hot, custom, target
 	h.lastTransition = time.Now()
-	logrus.WithFields(logrus.Fields{"temperatureCelsius": temperature, "percent": sample.Percent}).Info("heat protection paused charging; adapter keeps powering the Mac")
+	logrus.WithFields(logrus.Fields{"target": target, "heat": hot, "customLimit": custom, "temperatureCelsius": temperature}).
+		Info("charge hold set; adapter keeps powering the Mac")
 }
 
 // savedAppleLimit reports the user's Apple limit while a hold replaces it.

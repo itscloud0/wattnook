@@ -135,6 +135,8 @@ type RawFileConfig struct {
 	ThermalAdapterEnabled        *bool    `json:"thermalAdapterEnabled,omitempty"`
 	HeatPauseTemperatureCelsius  *float64 `json:"heatPauseTemperatureCelsius,omitempty"`
 	HeatResumeTemperatureCelsius *float64 `json:"heatResumeTemperatureCelsius,omitempty"`
+
+	CustomChargeLimit *int `json:"customChargeLimit,omitempty"`
 }
 
 func NewRawFileConfigFromConfig(c Config) (*RawFileConfig, error) {
@@ -155,6 +157,9 @@ func NewRawFileConfigFromConfig(c Config) (*RawFileConfig, error) {
 		HeatPauseTemperatureCelsius:  ptr.To(c.HeatPauseTemperatureCelsius()),
 		HeatResumeTemperatureCelsius: ptr.To(c.HeatResumeTemperatureCelsius()),
 		Cron:                         ptr.To(c.Cron()),
+	}
+	if limit := c.CustomChargeLimit(); limit > 0 {
+		rawConfig.CustomChargeLimit = ptr.To(limit)
 	}
 
 	if until := c.DisableUntil(); !until.IsZero() {
@@ -605,6 +610,25 @@ func (f *File) SetThermalAdapterEnabled(enabled bool) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.c.ThermalAdapterEnabled = ptr.To(enabled)
+}
+
+func (f *File) CustomChargeLimit() int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.c == nil || f.c.CustomChargeLimit == nil {
+		return 0
+	}
+	return *f.c.CustomChargeLimit
+}
+
+func (f *File) SetCustomChargeLimit(limit int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if limit <= 0 {
+		f.c.CustomChargeLimit = nil
+		return
+	}
+	f.c.CustomChargeLimit = ptr.To(limit)
 }
 
 func (f *File) HeatPauseTemperatureCelsius() float64 {
