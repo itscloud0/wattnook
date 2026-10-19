@@ -277,8 +277,7 @@ NSString *WattCompactBytes(double bytes, BOOL binary) {
     NSTextField *_pressure, *_heatNotice;
     WattButton *_batteryTab, *_systemTab, *_storageTab, *_cpuSort, *_memorySort, *_diskSort;
     NSMutableArray *_summary, *_details, *_detailCaptions, *_rows, *_paletteButtons, *_metricChecks, *_glassViews;
-    NSTextField *_processCount, *_swap, *_availableSpace, *_footer, *_empty, *_usedSpace, *_freeSpace, *_limitLabel;
-    WattStorageBar *_storageBar;
+    NSTextField *_processCount, *_swap, *_availableSpace, *_footer, *_empty, *_limitLabel;
     BOOL _system, _settings, _history, _storage;
     NSInteger _sortMetric;
     double _cpu, _memory;
@@ -415,10 +414,6 @@ static void Redisplay(NSView *view) {
         [_detailCaptions addObject:detailCaption];
         detail.toolTip = @"Change units";
     }
-    _usedSpace = Label(nil,NSMakeRect(24,24,174,19),@"Used —",11,NO);
-    _freeSpace = Label(nil,NSMakeRect(204,24,172,19),@"Free —",11,NO);
-    _storageBar = [[[WattStorageBar alloc] initWithFrame:NSMakeRect(24,14,352,4)] autorelease];
-    _storageBar.fraction = -1;
     _swap = Label(_systemPage, NSMakeRect(146,334,108,20), @"Swap —", 12, NO);
     _pressure = Label(_systemPage,NSMakeRect(24,419,260,18),@"Memory pressure: —",11,NO);
     _pressure.toolTip = @"macOS memory pressure, separate from the percentage of RAM used";
@@ -668,15 +663,6 @@ static void Redisplay(NSView *view) {
     _heatNotice.hidden = !heatUnavailable;
     if (actionsChanged) { [self clearGlass]; [self applyTheme]; }
     c.powerFlowView.limitEditable = c.powerFlowView.limitPercent >= 0 && ![c item:BattItemQuickLimits].hidden && [c item:BattItemLimit80].enabled;
-    uint64_t freeBytes = MIN(c.diskFreeBytes,c.diskTotalBytes);
-    _usedSpace.stringValue = c.diskTotalBytes == 0 ? @"Used —" :
-        [@"Used " stringByAppendingString:[NSByteCountFormatter stringFromByteCount:
-            c.diskTotalBytes-freeBytes countStyle:NSByteCountFormatterCountStyleFile]];
-    _freeSpace.stringValue = c.diskTotalBytes == 0 ? @"Free —" :
-        [@"Free " stringByAppendingString:[NSByteCountFormatter stringFromByteCount:
-            freeBytes countStyle:NSByteCountFormatterCountStyleFile]];
-    _storageBar.fraction = c.diskTotalBytes == 0 ? -1 : 1-freeBytes/(double)c.diskTotalBytes;
-    [_storageBar setNeedsDisplay:YES];
     _cpuSort.selected = _sortMetric == 0; _memorySort.selected = _sortMetric == 1;
     _diskSort.selected = _sortMetric == 2;
     NSArray *apps = [c.appStats sortedArrayUsingDescriptors:@[

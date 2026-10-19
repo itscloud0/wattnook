@@ -274,7 +274,10 @@ int main(int argc, const char *argv[]) {
         NSMutableDictionary *previewProcesses = [NSMutableDictionary dictionary];
         for (NSDictionary *app in c.appStats) previewProcesses[app[@"pid"]] = @[@0,@0];
         c.previousProcessCPU = previewProcesses;
-        BattBuildPopover(c);
+        // Build inside its own pool and refresh after draining it: views that
+        // nothing retains crash here instead of only in the shipped app.
+        @autoreleasepool { BattBuildPopover(c); }
+        @autoreleasepool { BattRefreshPopover(c,63,81); [c.powerFlowView setLimitPercent:-1]; BattRefreshPopover(c,63,81); }
         NSView *view = c.popover.contentViewController.view;
         // The approved full redesign gives both destinations equal, usable lanes.
         assert(NSWidth(view.bounds) == 400 && NSHeight(view.bounds) == 390);
