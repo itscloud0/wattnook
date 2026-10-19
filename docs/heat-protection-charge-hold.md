@@ -48,3 +48,5 @@ So the hold is a full charge limit: below the current charge it discharges on AC
 ## Charge limits below 80% (custom limits)
 
 With `chargeHold`, `/compatibility` advertises 50/55/60/65/70/75 ahead of Apple's 80–100. Choosing one saves `customChargeLimit`, keeps Apple's limit at 80% underneath as a backstop and holds at the custom limit; if the battery is already above it, the hold stays at the current charge (no discharge on AC). Heat Protection and the custom limit share one hold and one snapshot: heat retargets to the current charge, cooling retargets back to the limit, each with a single pulse. Choosing an Apple value clears the custom limit and releases the hold (or defers the Apple value while heat still holds).
+
+Live, 2026-10-20 00:47: daemon `8fbc40d8…`, PUT /limit 70 at 81% (Apple 80%, AC, 35 °C). Hold set at 81 (current charge, heat=true, custom 70). Nine samples over 3 min: 0 mA, AC and raw AC on, not charging; status paused/held. The "charges up to a custom limit and stops" path is covered by the probe at 82% but not yet observed through the daemon below 80%.
