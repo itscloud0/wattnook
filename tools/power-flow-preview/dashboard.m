@@ -690,10 +690,11 @@ int main(int argc, const char *argv[]) {
                         starts += element->type == kCGPathElementMoveToPoint;
                         closes += element->type == kCGPathElementCloseSubpath;
                     });
-                    // AppKit may append an empty move after closing the outline.
-                    assert(starts >= 1 && starts <= 2 && closes == 1);
-                    CGFloat center = NSMidX(c.powerFlowView.bounds);
-                    assert(CGPathContainsPoint(outline, NULL, CGPointMake(center+(merge ? 10 : -10), 49), NO));
+                    // Two Sankey bands (AppKit may append empty moves after closes).
+                    assert(starts >= 2 && starts <= 4 && closes == 2);
+                    CGFloat center = NSMidX(c.powerFlowView.bounds), width = NSWidth(c.powerFlowView.bounds);
+                    // Solid shared trunk at the common node, a gap between branches mid-way.
+                    assert(CGPathContainsPoint(outline, NULL, CGPointMake(merge ? width-54-8 : 54+8, 49), NO));
                     assert(!CGPathContainsPoint(outline, NULL, CGPointMake(center, 49), NO));
                 }
                 if (merge) break;
