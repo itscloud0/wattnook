@@ -314,6 +314,11 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     });
 }
 
+- (void)toggleTopUpFromPopover:(NSButton *)sender {
+    (void)sender;
+    battMenuAction(_handle, BattItemTopUp, NO);
+}
+
 - (void)toggleKeepAwakeFromPopover:(NSButton *)sender {
     (void)sender;
     [self toggleKeepAwake];
@@ -945,6 +950,11 @@ void BattBuildMenu(BattMenuController *controller, NSString *version) {
     [heat addItem:ActionItem(controller, @"Relaxed: pause 35°C, resume 32°C", @"", BattItemHeatRelaxed)];
     [heat addItem:[NSMenuItem separatorItem]];
     [heat addItem:ActionItem(controller, @"Custom…", @"", BattItemHeatCustom)];
+    [root addItem:ActionItem(controller, @"Top Up to 100%", @"", BattItemTopUp)];
+    NSMenu *sailing = AddSubmenu(controller, root, @"Sailing", BattItemSailing);
+    [sailing addItem:ActionItem(controller, @"Off", @"", BattItemSailingOff)];
+    [sailing addItem:ActionItem(controller, @"5% below the limit", @"", BattItemSailing5)];
+    [sailing addItem:ActionItem(controller, @"10% below the limit", @"", BattItemSailing10)];
     [root addItem:ActionItem(controller, @"Keep Awake: closed-lid work", @"", BattItemKeepAwake)];
 
     [root addItem:[NSMenuItem separatorItem]];

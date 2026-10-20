@@ -27,6 +27,13 @@ type Config interface {
 	// CustomChargeLimit is a native-mode limit outside Apple's advertised
 	// values, enforced through a charge hold (0 = none).
 	CustomChargeLimit() int
+	// SailingLevel lets the charge fall this many points below the limit
+	// before charging again (0 = off).
+	SailingLevel() int
+	// TopUpActive charges to 100% until the adapter is disconnected;
+	// TopUpRestoreLimit is the Apple limit to restore afterwards.
+	TopUpActive() bool
+	TopUpRestoreLimit() int
 
 	SetUpperLimit(int)
 	SetLowerLimit(int)
@@ -45,6 +52,8 @@ type Config interface {
 	SetHeatProtection(bool, float64, float64)
 	SetThermalAdapterEnabled(bool)
 	SetCustomChargeLimit(int)
+	SetSailingLevel(int)
+	SetTopUp(active bool, restoreLimit int)
 
 	LogrusFields() logrus.Fields
 

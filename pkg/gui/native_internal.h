@@ -51,6 +51,10 @@ enum { WattHistoryCapacity = 90 };
 @property(nonatomic, assign) BOOL chargingStateKnown;
 @property(nonatomic, assign) BOOL batteryCharging;
 @property(nonatomic, assign) BOOL heatPaused;
+// Charge modes from the daemon (native charge hold).
+@property(nonatomic, assign) BOOL topUpActive;
+@property(nonatomic, assign) BOOL sailing;
+@property(nonatomic, assign) NSInteger sailingLevel;
 @property(nonatomic, assign) BOOL hasTelemetry;
 @property(nonatomic, assign) BOOL limitEditable;
 @property(nonatomic, assign) id limitTarget;

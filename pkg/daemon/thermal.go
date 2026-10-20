@@ -28,6 +28,10 @@ type HeatProtectionStatus struct {
 	LastTransition           time.Time `json:"lastTransition,omitempty"`
 	// AdapterWarning is set when a charge-hold pulse left the charger at 5 V.
 	AdapterWarning string `json:"adapterWarning,omitempty"`
+	// Charge modes served by the same hold.
+	SailingLevel int  `json:"sailingLevel,omitempty"`
+	Sailing      bool `json:"sailing,omitempty"`
+	TopUp        bool `json:"topUp,omitempty"`
 }
 
 var (

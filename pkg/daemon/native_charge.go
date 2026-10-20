@@ -26,6 +26,11 @@ func setNativeLimit(c *gin.Context, limit int) {
 	}
 	maintainLoopInnerLock.Lock()
 	defer maintainLoopInnerLock.Unlock()
+	if conf.TopUpActive() {
+		// Choosing a limit by hand ends Top Up; its saved limit must not
+		// overwrite this choice when the adapter is unplugged.
+		conf.SetTopUp(false, 0)
+	}
 	if slices.Contains(customChargeLimits, limit) {
 		if heatHold == nil {
 			c.AbortWithStatusJSON(http.StatusConflict, "Limits below 80% need charge-hold support")

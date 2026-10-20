@@ -136,7 +136,10 @@ type RawFileConfig struct {
 	HeatPauseTemperatureCelsius  *float64 `json:"heatPauseTemperatureCelsius,omitempty"`
 	HeatResumeTemperatureCelsius *float64 `json:"heatResumeTemperatureCelsius,omitempty"`
 
-	CustomChargeLimit *int `json:"customChargeLimit,omitempty"`
+	CustomChargeLimit *int  `json:"customChargeLimit,omitempty"`
+	SailingLevel      *int  `json:"sailingLevel,omitempty"`
+	TopUpActive       *bool `json:"topUpActive,omitempty"`
+	TopUpRestoreLimit *int  `json:"topUpRestoreLimit,omitempty"`
 }
 
 func NewRawFileConfigFromConfig(c Config) (*RawFileConfig, error) {
@@ -160,6 +163,13 @@ func NewRawFileConfigFromConfig(c Config) (*RawFileConfig, error) {
 	}
 	if limit := c.CustomChargeLimit(); limit > 0 {
 		rawConfig.CustomChargeLimit = ptr.To(limit)
+	}
+	if level := c.SailingLevel(); level > 0 {
+		rawConfig.SailingLevel = ptr.To(level)
+	}
+	if c.TopUpActive() {
+		rawConfig.TopUpActive = ptr.To(true)
+		rawConfig.TopUpRestoreLimit = ptr.To(c.TopUpRestoreLimit())
 	}
 
 	if until := c.DisableUntil(); !until.IsZero() {
@@ -619,6 +629,50 @@ func (f *File) CustomChargeLimit() int {
 		return 0
 	}
 	return *f.c.CustomChargeLimit
+}
+
+func (f *File) SailingLevel() int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.c == nil || f.c.SailingLevel == nil {
+		return 0
+	}
+	return *f.c.SailingLevel
+}
+
+func (f *File) SetSailingLevel(level int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if level <= 0 {
+		f.c.SailingLevel = nil
+		return
+	}
+	f.c.SailingLevel = ptr.To(level)
+}
+
+func (f *File) TopUpActive() bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.c != nil && f.c.TopUpActive != nil && *f.c.TopUpActive
+}
+
+func (f *File) TopUpRestoreLimit() int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if f.c == nil || f.c.TopUpRestoreLimit == nil {
+		return 0
+	}
+	return *f.c.TopUpRestoreLimit
+}
+
+func (f *File) SetTopUp(active bool, restoreLimit int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !active {
+		f.c.TopUpActive, f.c.TopUpRestoreLimit = nil, nil
+		return
+	}
+	f.c.TopUpActive, f.c.TopUpRestoreLimit = ptr.To(true), ptr.To(restoreLimit)
 }
 
 func (f *File) SetCustomChargeLimit(limit int) {

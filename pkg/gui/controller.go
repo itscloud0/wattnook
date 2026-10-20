@@ -24,6 +24,7 @@ type menuController struct {
 	calibrationThreshold    int
 	calibrationPhase        calibration.Phase
 	heatPaused              bool
+	topUpActive             bool
 	temperatureCelsius      float64
 	capabilities            compatibility.Capabilities
 	nativeLimit             int
@@ -170,6 +171,7 @@ func (c *menuController) refreshOnOpen() {
 			c.temperatureCelsius = *heat.TemperatureCelsius
 		}
 		c.updateHeatProtection(conf, heat)
+		c.updateChargeModes(heat)
 	}
 	c.menu.setHeatStatus(c.heatPaused, c.temperatureCelsius)
 	c.menu.setProcessorTemperature(processorTemperature.Celsius())
@@ -330,6 +332,7 @@ func (c *menuController) updateTelemetry() {
 			c.temperatureCelsius = *heat.TemperatureCelsius
 		}
 		c.menu.setHeatStatus(c.heatPaused, c.temperatureCelsius)
+		c.updateChargeModes(heat)
 		if c.capabilities.Supports(compatibility.FeatureHeatProtection) {
 			title, detail := heatProtectionPresentation(heat.Enabled, heat)
 			c.menu.setTitle(itemHeatProtection, title)
@@ -523,4 +526,21 @@ func (c *menuController) updateMagSafeChecks(mode config.ControlMagSafeMode) {
 	c.menu.setChecked(itemMagSafeEnabled, mode == config.ControlMagSafeModeEnabled)
 	c.menu.setChecked(itemMagSafeAlwaysOff, mode == config.ControlMagSafeModeAlwaysOff)
 	c.menu.setChecked(itemMagSafeDisabled, mode != config.ControlMagSafeModeEnabled && mode != config.ControlMagSafeModeAlwaysOff)
+}
+
+// updateChargeModes mirrors Top Up and Sailing; both need the charge hold.
+func (c *menuController) updateChargeModes(status *client.HeatProtectionStatus) {
+	supported := c.capabilities.ChargeHold
+	c.menu.setHidden(itemTopUp, !supported)
+	c.menu.setHidden(itemSailing, !supported)
+	c.topUpActive = status.TopUp
+	if status.TopUp {
+		c.menu.setTitle(itemTopUp, "Stop Top Up")
+	} else {
+		c.menu.setTitle(itemTopUp, "Top Up to 100%")
+	}
+	c.menu.setChecked(itemSailingOff, status.SailingLevel == 0)
+	c.menu.setChecked(itemSailing5, status.SailingLevel == 5)
+	c.menu.setChecked(itemSailing10, status.SailingLevel == 10)
+	c.menu.setChargeModes(status.TopUp, status.Sailing, status.SailingLevel)
 }

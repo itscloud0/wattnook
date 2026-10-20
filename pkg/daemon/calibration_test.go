@@ -28,9 +28,22 @@ type mockConf struct {
 	heatPause           float64
 	heatResume          float64
 	customLimit         int
+	sailing             int
+	topUp               bool
+	topUpRestore        int
 }
 
-func (m *mockConf) CustomChargeLimit() int     { return m.customLimit }
+func (m *mockConf) CustomChargeLimit() int { return m.customLimit }
+func (m *mockConf) SailingLevel() int      { return m.sailing }
+func (m *mockConf) SetSailingLevel(v int)  { m.sailing = v }
+func (m *mockConf) TopUpActive() bool      { return m.topUp }
+func (m *mockConf) TopUpRestoreLimit() int { return m.topUpRestore }
+func (m *mockConf) SetTopUp(active bool, restore int) {
+	m.topUp, m.topUpRestore = active, restore
+	if !active {
+		m.topUpRestore = 0
+	}
+}
 func (m *mockConf) SetCustomChargeLimit(v int) { m.customLimit = v }
 
 func (m *mockConf) UpperLimit() int               { return m.upper }

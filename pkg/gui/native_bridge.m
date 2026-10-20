@@ -92,6 +92,13 @@ void batt_menu_set_heat_status(BattMenuRef menu, bool paused, double temperature
     BattController(menu).powerFlowView.temperatureCelsius = temperature_celsius;
 }
 
+void batt_menu_set_charge_modes(BattMenuRef menu, bool top_up, bool sailing, int sailing_level) {
+    BattPowerFlowView *power = BattController(menu).powerFlowView;
+    power.topUpActive = top_up; power.sailing = sailing; power.sailingLevel = sailing_level;
+    [power setNeedsDisplay:YES];
+    [BattController(menu) refreshPopoverControls];
+}
+
 void batt_menu_set_processor_temperature(BattMenuRef menu, double celsius) {
     BattController(menu).powerFlowView.processorTemperatureCelsius = celsius;
     [BattController(menu).powerFlowView setNeedsDisplay:YES];

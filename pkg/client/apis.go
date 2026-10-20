@@ -100,6 +100,20 @@ type HeatProtectionStatus struct {
 	ReserveBlocked           bool      `json:"reserveBlocked"`
 	LastTransition           time.Time `json:"lastTransition,omitempty"`
 	AdapterWarning           string    `json:"adapterWarning,omitempty"`
+	SailingLevel             int       `json:"sailingLevel,omitempty"`
+	Sailing                  bool      `json:"sailing,omitempty"`
+	TopUp                    bool      `json:"topUp,omitempty"`
+}
+
+// SetSailing sets how many points the charge may drift below the limit
+// before charging again (0 turns Sailing off).
+func (c *Client) SetSailing(level int) (string, error) {
+	return c.Put("/sailing", strconv.Itoa(level))
+}
+
+// SetTopUp starts or stops charging to 100% until the adapter is unplugged.
+func (c *Client) SetTopUp(enabled bool) (string, error) {
+	return c.Put("/top-up", strconv.FormatBool(enabled))
 }
 
 func (c *Client) GetHeatProtection() (*HeatProtectionStatus, error) {

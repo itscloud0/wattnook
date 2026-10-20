@@ -318,6 +318,7 @@ NSString *WattCompactBytes(double bytes, BOOL binary) {
     WattButton *_batteryTab, *_systemTab, *_storageTab, *_cpuSort, *_memorySort, *_diskSort;
     NSMutableArray *_summary, *_details, *_detailCaptions, *_rows, *_paletteButtons, *_metricChecks, *_glassViews;
     NSTextField *_processCount, *_swap, *_availableSpace, *_footer, *_empty, *_limitLabel;
+    WattButton *_topUpButton;
     BOOL _system, _settings, _history, _storage;
     NSInteger _sortMetric;
     double _cpu, _memory;
@@ -431,6 +432,12 @@ static void Redisplay(NSView *view) {
     _limitLabel.drawsBackground = NO; _limitLabel.textColor = [NSColor.whiteColor colorWithAlphaComponent:0.7];
     _limitLabel.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
     [_batteryPage addSubview:_limitLabel];
+    // Top Up sits with the limit it overrides.
+    _topUpButton = Button(_batteryPage, NSMakeRect(284, 320, 100, 20), @"Top Up", @"bolt.fill",
+        c, @selector(toggleTopUpFromPopover:));
+    _topUpButton.plain = YES;
+    _topUpButton.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
+    _topUpButton.toolTip = @"Charge to 100% once; your limit returns when you unplug";
     c.heatButton = Button(_batteryPage, NSMakeRect(24, 158, 172, 44),
         @"Heat protection", @"", c, @selector(showHeatOptions:));
     c.darkButton = Button(_batteryPage, NSMakeRect(204, 158, 172, 44),
@@ -709,6 +716,9 @@ static void Redisplay(NSView *view) {
     [c item:BattItemKeepAwake].enabled = c.darkButton.enabled;
     [c item:BattItemKeepAwake].title = c.keepAwakeStatus == nil ? @"Keep Awake: status unavailable" : awake ? @"Keep Awake: On — turn off" : @"Keep Awake: closed-lid work";
     c.darkButton.accessibilityLabel = c.darkButton.title;
+    _topUpButton.hidden = [c item:BattItemTopUp].hidden || !c.powerFlowView.pluggedIn;
+    _topUpButton.title = c.powerFlowView.topUpActive ? @"Stop Top Up" : @"Top Up";
+    _topUpButton.selected = c.powerFlowView.topUpActive;
     c.heatButton.enabled = ![c item:BattItemHeatProtection].hidden;
     BOOL heatUnavailable = !c.heatButton.enabled;
     NSRect awakeFrame = NSMakeRect(heatUnavailable ? 24 : 204,158,heatUnavailable ? 352 : 172,44);

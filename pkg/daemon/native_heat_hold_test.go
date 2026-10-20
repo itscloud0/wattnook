@@ -413,3 +413,114 @@ func TestHeatTargetNeverExceedsCustomLimit(t *testing.T) {
 		t.Fatalf("heat hold above the custom limit: %v", holder.holds)
 	}
 }
+
+func newModesFixture(sample heatHoldSample, apple int) (*nativeHeatHold, *holderFixture, *heatHoldSample) {
+	h, holder, s := newHoldFixture(sample)
+	h.appleLimit = func() (int, error) { return apple, nil }
+	return h, holder, s
+}
+
+func TestSailingHoldsUntilTheChargeFallsBelowTheBand(t *testing.T) {
+	h, holder, s := newModesFixture(heatHoldSample{Temperature: 25, Percent: 80, PluggedIn: true}, 80)
+	h.sailingLevel = func() int { return 5 }
+	h.reconcile(false, 35, 32)
+	if len(holder.holds) != 0 {
+		t.Fatalf("held at the limit: %v", holder.holds)
+	}
+	// Drifts below the limit on AC: hold where it is instead of topping up.
+	s.Percent = 79
+	h.reconcile(false, 35, 32)
+	if len(holder.holds) != 1 || holder.holds[0] != 79 || !getHeatProtectionStatusUnchecked().Sailing {
+		t.Fatalf("sail hold: %v", holder.holds)
+	}
+	h.reconcile(false, 35, 32)
+	if len(holder.holds) != 1 || len(holder.retargets) != 0 {
+		t.Fatal("re-held while sailing steadily")
+	}
+	// Drains on battery, replugged inside the band: follow it down once.
+	s.Percent, s.PluggedIn = 77, true
+	h.reconcile(false, 35, 32)
+	if len(holder.retargets) != 1 || holder.retargets[0] != 77 {
+		t.Fatalf("band retarget: %v", holder.retargets)
+	}
+	// Falls to limit − sailing: release so macOS charges back to the limit.
+	s.Percent = 75
+	h.reconcile(false, 35, 32)
+	if holder.releases != 1 || holder.active || getHeatProtectionStatusUnchecked().Sailing {
+		t.Fatalf("not released at the band floor: releases=%d", holder.releases)
+	}
+	// Charging back up through the band does not sail until the limit again.
+	s.Percent = 78
+	h.reconcile(false, 35, 32)
+	if len(holder.holds) != 1 {
+		t.Fatalf("sailed before reaching the limit: %v", holder.holds)
+	}
+}
+
+func TestSailingWithCustomLimitRetargetsToTheLimit(t *testing.T) {
+	h, holder, s := newModesFixture(heatHoldSample{Temperature: 25, Percent: 70, PluggedIn: true}, 80)
+	h.customLimit = func() int { return 70 }
+	h.sailingLevel = func() int { return 10 }
+	h.reconcile(false, 35, 32)
+	if len(holder.holds) != 1 || holder.holds[0] != 70 {
+		t.Fatalf("limit hold: %v", holder.holds)
+	}
+	s.Percent = 65
+	h.reconcile(false, 35, 32)
+	if len(holder.retargets) != 1 || holder.retargets[0] != 65 {
+		t.Fatalf("sailing inside the band: %v", holder.retargets)
+	}
+	s.Percent = 60
+	h.reconcile(false, 35, 32)
+	if len(holder.retargets) != 2 || holder.retargets[1] != 70 {
+		t.Fatalf("back to charging toward the limit: %v", holder.retargets)
+	}
+}
+
+func TestTopUpSuspendsLimitsAndEndsOnUnplug(t *testing.T) {
+	h, holder, s := newModesFixture(heatHoldSample{Temperature: 25, Percent: 70, PluggedIn: true}, 80)
+	topUp, restore := true, 85
+	h.customLimit = func() int { return 60 }
+	h.sailingLevel = func() int { return 5 }
+	h.topUpState = func() (bool, int) { return topUp, restore }
+	h.clearTopUp = func() { topUp = false }
+	var applied []int
+	h.setLimit = func(limit int) error { applied = append(applied, limit); return nil }
+	h.reconcile(false, 35, 32)
+	if len(holder.holds) != 0 || !getHeatProtectionStatusUnchecked().TopUp {
+		t.Fatalf("limit hold during Top Up: %v", holder.holds)
+	}
+	s.PluggedIn = false
+	h.reconcile(false, 35, 32)
+	if topUp || len(applied) != 1 || applied[0] != 85 || getHeatProtectionStatusUnchecked().TopUp {
+		t.Fatalf("Top Up not ended on unplug: topUp=%v applied=%v", topUp, applied)
+	}
+}
+
+func TestTopUpAPIStartsAndManualLimitEndsIt(t *testing.T) {
+	_, _ = setupHeatHoldAPI(t)
+	capabilities.SupportedLimits = append(append([]int{}, customChargeLimits...), 80, 85, 90, 95, 100)
+	heatHold.customLimit = func() int { return conf.CustomChargeLimit() }
+	heatHold.topUpState = func() (bool, int) { return conf.TopUpActive(), conf.TopUpRestoreLimit() }
+	heatHold.clearTopUp = func() { conf.SetTopUp(false, 0) }
+	var applied []int
+	heatHold.setLimit = func(limit int) error { applied = append(applied, limit); return nil }
+	router := setupRoutes()
+	put := func(path, body string) int {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("PUT", path, strings.NewReader(body)))
+		return w.Code
+	}
+	if code := put("/top-up", "true"); code != 201 || !conf.TopUpActive() || conf.TopUpRestoreLimit() != 80 || len(applied) != 1 || applied[0] != 100 {
+		t.Fatalf("start: %d active=%v restore=%d applied=%v", code, conf.TopUpActive(), conf.TopUpRestoreLimit(), applied)
+	}
+	if code := put("/limit", "90"); code != 201 || conf.TopUpActive() {
+		t.Fatalf("manual limit kept Top Up: %d", code)
+	}
+	if code := put("/sailing", "25"); code != 400 {
+		t.Fatalf("sailing 25 accepted: %d", code)
+	}
+	if code := put("/sailing", "10"); code != 201 || conf.SailingLevel() != 10 {
+		t.Fatalf("sailing: %d level=%d", code, conf.SailingLevel())
+	}
+}

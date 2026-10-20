@@ -32,6 +32,14 @@ func (c *menuController) handleAction(item menuItem, checked bool) {
 		c.setDisableChargingPreSleep(checked)
 	case itemPreventSystemSleep:
 		c.setPreventSystemSleep(checked)
+	case itemTopUp:
+		c.toggleTopUp()
+	case itemSailingOff:
+		c.setSailing(0)
+	case itemSailing5:
+		c.setSailing(5)
+	case itemSailing10:
+		c.setSailing(10)
 	case itemHeatOff:
 		c.setHeatProtection(false, 33, 30)
 	case itemHeatStrict:
@@ -336,4 +344,19 @@ func (c *menuController) quit() {
 	}
 	logrus.Info("Quitting client")
 	terminateNativeApp()
+}
+
+func (c *menuController) toggleTopUp() {
+	_, err := c.api.SetTopUp(!c.topUpActive)
+	if err != nil {
+		showAlert("Top Up not changed", err.Error())
+	}
+	c.updateTelemetry()
+}
+
+func (c *menuController) setSailing(level int) {
+	if _, err := c.api.SetSailing(level); err != nil {
+		showAlert("Sailing not changed", err.Error())
+	}
+	c.updateTelemetry()
 }
