@@ -352,7 +352,9 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
         @[NSAppearanceNameDarkAqua, NSAppearanceNameAqua]] isEqualToString:NSAppearanceNameDarkAqua];
     NSInteger charge = MAX(0, MIN(100, self.chargePercent));
     NSInteger limit = self.displayedLimitPercent;
-    BOOL adapter = self.hasTelemetry && self.pluggedIn && self.adapterWatts > 0.25;
+    // A connected charger the Mac isn't drawing from still reads ~0.4 W
+    // (charger electronics); below 1 W it is not powering the Mac.
+    BOOL adapter = self.hasTelemetry && self.pluggedIn && self.adapterWatts > 1.0;
     BOOL charging = self.hasTelemetry && self.batteryWatts > 0.25;
     BOOL statusCharging = self.chargingStateKnown ? self.batteryCharging : charging;
     // On adapter power a held battery reads a few hundred mW either way;
