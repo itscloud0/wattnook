@@ -394,6 +394,10 @@ func heatProtectionPresentation(enabled bool, status *client.HeatProtectionStatu
 		}
 		return "Heat Protection: off", "Off"
 	}
+	if status.Discharging {
+		// Draining never charges, so there is nothing to pause.
+		return "Heat Protection: not needed while discharging", "Standing by · discharging"
+	}
 	if status.Paused {
 		if status.Mechanism == "adapter" {
 			return "Heat Protection: cooling — running on battery", "Cooling · battery power"

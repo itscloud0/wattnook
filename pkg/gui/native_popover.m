@@ -57,8 +57,13 @@ static const CGFloat WattBatteryPopoverHeight = 532 - 142;
     CGFloat radius = glass || _grouped ? NSHeight(surface) / 2 : 10;
     NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:surface xRadius:radius yRadius:radius];
     BOOL bare = (_grouped || (glass && _onGlass)) && !_selected && !_hover && !self.highlighted;
+    // A running plain action (Stop Top Up / Stop Discharge) is a quiet tint
+    // with accent ink, not a filled block competing with the charge state.
+    BOOL quietOn = _plain && _selected && !_grouped && !_tab;
     if ((!_plain || _hover || _selected) && !bare && (!_tab || _hover || self.highlighted)) {
-        NSColor *color = _selected && _grouped ?
+        NSColor *color = quietOn ?
+            [NSColor.whiteColor colorWithAlphaComponent:self.highlighted ? 0.16 : (_hover ? 0.12 : 0.08)] :
+            _selected && _grouped ?
             [NSColor.whiteColor colorWithAlphaComponent:self.highlighted ? 0.22 : 0.14] :
             _selected ? (glass ? [WattAccentColor() colorWithAlphaComponent:0.85] :
             [WattAccentColor() blendedColorWithFraction:0.40 ofColor:NSColor.blackColor]) :
@@ -76,7 +81,8 @@ static const CGFloat WattBatteryPopoverHeight = 532 - 142;
         [NSColor.keyboardFocusIndicatorColor setStroke]; path.lineWidth = 2; [path stroke];
     }
     NSColor *ink = !self.enabled ? NSColor.disabledControlTextColor :
-        _grouped && !_selected ? NSColor.secondaryLabelColor : NSColor.labelColor;
+        _grouped && !_selected ? NSColor.secondaryLabelColor :
+        quietOn ? WattAccentColor() : NSColor.labelColor;
     CGFloat iconWidth = self.image ? 17 : (_swatch ? 10 : 0);
     NSDictionary *style = @{NSFontAttributeName:self.font,
         NSForegroundColorAttributeName:ink};

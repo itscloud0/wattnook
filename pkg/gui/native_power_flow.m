@@ -165,6 +165,9 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
 @implementation BattPowerFlowView {
     NSInteger _previewLimitPercent;
     BOOL _limitDragging;
+    // The focus ring is for keyboard users; a click or the popover opening
+    // makes the rail first responder without asking for a ring.
+    BOOL _keyboardFocus;
     BOOL _limitMoved;
     NSPoint _limitDragStart;
     CAGradientLayer *_flowHighlight;
@@ -290,6 +293,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     _limitDragging = YES;
     _limitMoved = NO;
     _limitDragStart = point;
+    _keyboardFocus = NO;
     [self.window makeFirstResponder:self];
 }
 
@@ -311,7 +315,11 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
 - (BOOL)acceptsFirstResponder {
     return self.limitEditable;
 }
-- (BOOL)becomeFirstResponder { [self setNeedsDisplay:YES]; return [super becomeFirstResponder]; }
+- (BOOL)becomeFirstResponder {
+    _keyboardFocus = NSApp.currentEvent.type == NSEventTypeKeyDown;
+    [self setNeedsDisplay:YES];
+    return [super becomeFirstResponder];
+}
 - (BOOL)resignFirstResponder { [self setNeedsDisplay:YES]; return [super resignFirstResponder]; }
 
 - (void)keyDown:(NSEvent *)event {
@@ -380,7 +388,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
          NSColor.labelColor, NSTextAlignmentLeft);
     // Orange marks the heat pause on the state line only; temperatures stay
     // neutral unless the CPU itself runs hot.
-    Text(state, NSMakeRect(24, 140, 250, 18), 13, NSFontWeightRegular,
+    Text(state, NSMakeRect(24, 142, 250, 18), 13, NSFontWeightRegular,
          self.heatPaused && self.pluggedIn ? NSColor.systemOrangeColor : NSColor.secondaryLabelColor,
          NSTextAlignmentLeft);
     // Battery and processor temperatures side by side: Heat Protection acts
@@ -414,7 +422,8 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     CGFloat markerX = [self markerX];
     if (limit >= 0 && self.limitEditable) {
         // A raised grip says "drag me"; the bare tick only marks a read-only limit.
-        NSRect grip = NSMakeRect(markerX - 3, NSMidY(rail) - 11, 6, 22);
+        // 16 pt tall: clear of the state line above the rail.
+        NSRect grip = NSMakeRect(markerX - 3, NSMidY(rail) - 8, 6, 16);
         NSBezierPath *gripPath = [NSBezierPath bezierPathWithRoundedRect:grip xRadius:3 yRadius:3];
         [NSGraphicsContext saveGraphicsState];
         NSShadow *shadow = [[[NSShadow alloc] init] autorelease];
@@ -422,7 +431,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
         shadow.shadowOffset = NSMakeSize(0, -1); shadow.shadowBlurRadius = 3; [shadow set];
         [[NSColor colorWithCalibratedWhite:0.96 alpha:1] setFill]; [gripPath fill];
         [NSGraphicsContext restoreGraphicsState];
-        if (self.window.firstResponder == self) {
+        if (self.window.firstResponder == self && _keyboardFocus) {
             NSBezierPath *ring = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(grip, -3, -3) xRadius:5 yRadius:5];
             ring.lineWidth = 2; [NSColor.keyboardFocusIndicatorColor setStroke]; [ring stroke];
         }
