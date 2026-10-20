@@ -365,3 +365,34 @@ func TestCustomLimitHoldFollowsChargeDownOnlyOnAC(t *testing.T) {
 		t.Fatalf("partial drain: %v", holder2.retargets)
 	}
 }
+
+func TestHeatHoldKeepsALowBatteryCharging(t *testing.T) {
+	h, holder, s := newHoldFixture(heatHoldSample{Temperature: 40, Percent: 29, PluggedIn: true})
+	h.reconcile(true, 35, 32)
+	if len(holder.holds) != 0 || !getHeatProtectionStatusUnchecked().ReserveBlocked {
+		t.Fatalf("held below the start floor: %v", holder.holds)
+	}
+	s.Percent = 40
+	h.reconcile(true, 35, 32)
+	if len(holder.holds) != 1 || holder.holds[0] != 40 {
+		t.Fatalf("hold above the floor: %v", holder.holds)
+	}
+	// Adapter cannot cover the load: the held battery drains. Keep holding
+	// down to the release floor, then let it charge despite the heat.
+	s.Percent = 26
+	h.reconcile(true, 35, 32)
+	if holder.releases != 0 {
+		t.Fatal("released above the release floor")
+	}
+	s.Percent = 24
+	h.reconcile(true, 35, 32)
+	if holder.releases != 1 || holder.active || getHeatProtectionStatusUnchecked().Paused {
+		t.Fatalf("still holding a low battery: releases=%d", holder.releases)
+	}
+	// It does not re-hold until the start floor is reached again.
+	s.Percent = 28
+	h.reconcile(true, 35, 32)
+	if len(holder.holds) != 1 {
+		t.Fatalf("re-held below the start floor: %v", holder.holds)
+	}
+}

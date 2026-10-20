@@ -51,6 +51,14 @@ type nativeHeatHold struct {
 
 var heatHold *nativeHeatHold
 
+// Heat Protection never holds a nearly empty battery: below heatHoldStart it
+// does not start a hold, and below heatHoldRelease it ends one, so a hot Mac
+// whose adapter cannot cover the load still charges instead of draining.
+const (
+	heatHoldStart   = 30
+	heatHoldRelease = 25
+)
+
 func heatHoldRecordPath(configPath string) string {
 	name := "batt.json"
 	if configPath != "" {
@@ -200,6 +208,17 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 			hot = temperature > resume
 		} else {
 			hot = temperature >= pause
+		}
+	}
+	if hot {
+		floor := heatHoldStart
+		if h.forHeat && active {
+			floor = heatHoldRelease
+		}
+		if sample.Percent < floor {
+			hot = false
+			status.ReserveBlocked = true
+			status.Reason = "battery low; charging despite heat"
 		}
 	}
 	if hot && custom == 0 && !(h.forHeat && active) {

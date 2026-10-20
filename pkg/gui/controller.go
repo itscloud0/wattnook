@@ -385,7 +385,10 @@ func heatProtectionPresentation(enabled bool, status *client.HeatProtectionStatu
 		return "Heat Protection: charging paused", fmt.Sprintf("Paused · resumes at %.0f°", status.ResumeTemperatureCelsius)
 	}
 	if status.ReserveBlocked {
-		return "Heat Protection: low battery — adapter restored; re-arms above 25%", "Low battery · AC restored"
+		if status.Mechanism == "adapter" {
+			return "Heat Protection: low battery — adapter restored; re-arms above 25%", "Low battery · AC restored"
+		}
+		return "Heat Protection: battery low — charging despite heat; pauses again above 30%", "Low battery · charging"
 	}
 	title := fmt.Sprintf("Heat Protection: on (%.0f°C → %.0f°C)", status.PauseTemperatureCelsius, status.ResumeTemperatureCelsius)
 	if status.Mechanism == "adapter" {
