@@ -25,6 +25,7 @@ macOS 27 removed the SMC keys that charge limiters relied on, so most of them qu
 
 - **Heat Protection that keeps you on AC.** When the battery gets hot, charging pauses at the current level while the adapter keeps powering the Mac. It resumes once the battery cools. A low battery whose adapter can't keep up is never left draining.
 - **Charge limits from 50% to 100%.** Apple's built-in setting stops at 80%. WattNook adds 50–75%, never discharges on the adapter to reach a lower limit, and keeps Apple's 80% underneath as a safety net.
+- **Sailing and Top Up, free.** Sailing stops micro-charging: once the limit is reached the battery drifts 5–10% before charging again. Top Up charges to 100% once for a trip and restores your limit when you unplug.
 - **See where the power goes.** A live flow shows adapter, battery and Mac watts as they split and merge, plus battery *and* CPU temperature, so you know whether the battery or the processor is the hot part.
 - **Find what's heating your Mac.** Top apps by CPU, memory or disk, memory pressure, a 15-minute history, and a normal Quit one hover away.
 - **Keep Awake with the lid closed.** Run long jobs or remote sessions without sleep; WattNook dims the panel when the lid closes.
@@ -59,7 +60,7 @@ Requirements: Apple Silicon, macOS 15 or later, Go and the Xcode command-line to
 
 ```sh
 git clone https://github.com/itscloud0/wattnook.git && cd wattnook
-WATTNOOK_VERSION=0.2.1 tools/build-wattnook-app.sh /tmp/WattNook.app
+WATTNOOK_VERSION=0.3.0 tools/build-wattnook-app.sh /tmp/WattNook.app
 mv /tmp/WattNook.app ~/Applications/ && open ~/Applications/WattNook.app
 ```
 
