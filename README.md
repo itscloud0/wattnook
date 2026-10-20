@@ -60,7 +60,7 @@ Requirements: Apple Silicon, macOS 15 or later, Go and the Xcode command-line to
 
 ```sh
 git clone https://github.com/itscloud0/wattnook.git && cd wattnook
-WATTNOOK_VERSION=0.4.0 tools/build-wattnook-app.sh /tmp/WattNook.app
+WATTNOOK_VERSION=0.4.1 tools/build-wattnook-app.sh /tmp/WattNook.app
 mv /tmp/WattNook.app ~/Applications/ && open ~/Applications/WattNook.app
 ```
 

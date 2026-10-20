@@ -68,3 +68,4 @@ Live, MacBook Air M4, macOS 27, 70 W adapter at 20 V, battery 57 %, custom limit
 ## Heat hold at the displayed charge — 2026-10-21
 
 The heat hold used to target the charge plus one point, so it would never give back the fraction above the rounded-down display. Live at 03:00 that charged a hot battery (37 °C) from exactly 57.0 % towards 58 % at ~3.25 A (≈40 W). The hold now targets the displayed charge: after the pulse the battery gave back ~0.75 A for ~50 s, then 0 mA with the adapter powering the Mac (03:03). The low-charge reserve now counts only a drain below the hold point as "the adapter cannot keep up".
+- Run 3 (03:11–03:21): Discharge from 58 % with the limit moved from 50 to 55 mid-run. −0.6…−0.9 A with `ExternalConnected = Yes` throughout; Discharge ended by itself at 55 % (03:21:37), the hold parked at 55 and the current settled at 0 mA with the adapter powering the Mac. No replug needed.
