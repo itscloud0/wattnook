@@ -43,7 +43,7 @@ macOS 27 removed the SMC keys that charge limiters relied on, so most of them qu
 
 ## Install
 
-1. Download **WattNook-0.2.0.zip** from the [latest release](https://github.com/itscloud0/wattnook/releases/latest), unzip it and move **WattNook.app** to Applications.
+1. Download the **WattNook-x.y.z.zip** from the [latest release](https://github.com/itscloud0/wattnook/releases/latest), unzip it and move **WattNook.app** to Applications.
 2. The app is not notarized yet, so macOS blocks the first launch. Either right-click the app → **Open** → **Open**, or run:
    ```sh
    xattr -dr com.apple.quarantine /Applications/WattNook.app
@@ -59,7 +59,7 @@ Requirements: Apple Silicon, macOS 15 or later, Go and the Xcode command-line to
 
 ```sh
 git clone https://github.com/itscloud0/wattnook.git && cd wattnook
-WATTNOOK_VERSION=0.2.0 tools/build-wattnook-app.sh /tmp/WattNook.app
+WATTNOOK_VERSION=0.2.1 tools/build-wattnook-app.sh /tmp/WattNook.app
 mv /tmp/WattNook.app ~/Applications/ && open ~/Applications/WattNook.app
 ```
 
