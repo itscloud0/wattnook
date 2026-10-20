@@ -43,19 +43,28 @@ macOS 27 removed the SMC keys that charge limiters relied on, so most of them qu
 
 ## Install
 
-> [!IMPORTANT]
-> A signed release and a Homebrew cask are on the way. Until then WattNook is built from source and its privileged helper is set up by hand — see [Build and helper setup](docs/DETAILS.md#build-from-source).
+1. Download **WattNook-0.2.0.zip** from the [latest release](https://github.com/itscloud0/wattnook/releases/latest), unzip it and move **WattNook.app** to Applications.
+2. The app is not notarized yet, so macOS blocks the first launch. Either right-click the app → **Open** → **Open**, or run:
+   ```sh
+   xattr -dr com.apple.quarantine /Applications/WattNook.app
+   ```
+3. Open WattNook, click the menu-bar icon and choose **Install** when asked. macOS asks for your administrator password once to install the charging helper.
+
+Updating later: replace the app, open it and choose **Upgrade Daemon…** when offered. Run only one charging tool at a time: quit AlDente, batt or similar apps first.
+
+<details>
+<summary>Build from source</summary>
 
 Requirements: Apple Silicon, macOS 15 or later, Go and the Xcode command-line tools.
 
 ```sh
-git clone https://github.com/itscloud0/wattnook.git
-cd wattnook
-tools/build-wattnook-app.sh /tmp/WattNook.app
+git clone https://github.com/itscloud0/wattnook.git && cd wattnook
+WATTNOOK_VERSION=0.2.0 tools/build-wattnook-app.sh /tmp/WattNook.app
 mv /tmp/WattNook.app ~/Applications/ && open ~/Applications/WattNook.app
 ```
 
-Run only one charging tool at a time: quit AlDente, batt or similar apps first.
+Or install the helper from the command line: `sudo ~/Applications/WattNook.app/Contents/MacOS/WattNook install-helper` (remove it with `uninstall-helper`).
+</details>
 
 ## How it works on macOS 27
 

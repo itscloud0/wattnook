@@ -18,9 +18,16 @@ app="$build_dir/WattNook.app"
 export GOCACHE="${GOCACHE:-${TMPDIR:-/tmp}/wattnook-go-cache}"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$project_dir/tools/app/Info.plist" "$app/Contents/Info.plist"
+# WATTNOOK_VERSION (e.g. 0.2.0) stamps the binary and the bundle; the app
+# compares it with the helper's version to offer "Upgrade helper".
+version=${WATTNOOK_VERSION:-0.0.0-dev}
+commit=$(cd "$project_dir" && git rev-parse --short HEAD 2>/dev/null || echo unknown)
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" "$app/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $version" "$app/Contents/Info.plist"
 (
   cd "$project_dir"
-  go build -o "$app/Contents/MacOS/WattNook" ./cmd/batt
+  go build -trimpath -ldflags "-s -w -X github.com/charlie0129/batt/pkg/version.Version=v$version -X github.com/charlie0129/batt/pkg/version.GitCommit=$commit" \
+    -o "$app/Contents/MacOS/WattNook" ./cmd/batt
   swiftc -O -module-cache-path "${TMPDIR:-/tmp}/wattnook-swift-modules" \
     tools/keep-awake/Policy.swift tools/keep-awake/KeepAwake.swift -o "$app/Contents/MacOS/KeepAwake"
   icon_tmp=$(mktemp -d "${TMPDIR:-/tmp}/wattnook-icon.XXXXXX")

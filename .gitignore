@@ -76,3 +76,4 @@ vendor
 *.o
 
 repomix-output.xml
+/dist/
