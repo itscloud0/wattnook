@@ -48,7 +48,7 @@ macOS 27 removed the SMC keys that charge limiters relied on, so most of them qu
    ```sh
    xattr -dr com.apple.quarantine /Applications/WattNook.app
    ```
-3. Open WattNook, click the menu-bar icon and choose **Install** when asked. macOS asks for your administrator password once to install the charging helper.
+3. Open WattNook, click the menu-bar icon and choose **Install Daemon…**. macOS asks for your administrator password once to install the charging helper.
 
 Updating later: replace the app, open it and choose **Upgrade Daemon…** when offered. Run only one charging tool at a time: quit AlDente, batt or similar apps first.
 
