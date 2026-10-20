@@ -290,7 +290,15 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 		return
 	}
 	target := sample.Percent
-	if !hot && custom > target {
+	if hot {
+		// The displayed percentage is rounded down; holding exactly at it makes
+		// macOS drain the battery on AC for a minute to reach it. One point up
+		// settles by topping off a fraction instead, never above a custom limit.
+		target++
+		if ceiling := max(custom, sample.Percent); custom > 0 && target > ceiling {
+			target = ceiling
+		}
+	} else if custom > target {
 		target = custom
 	}
 	if target < chargehold.MinTarget || target > chargehold.MaxTarget {
