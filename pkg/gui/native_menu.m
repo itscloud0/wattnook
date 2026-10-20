@@ -320,14 +320,10 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
 }
 
 // One contextual button: Discharge when the charge is above the limit (or
-// already discharging), Top Up otherwise.
+// already discharging), Top Up otherwise. Its tag holds the shown action.
 - (void)chargeActionFromPopover:(NSButton *)sender {
-    (void)sender;
-    BattPowerFlowView *power = self.powerFlowView;
-    BOOL discharge = power.dischargingToLimit ||
-        (!power.topUpActive && power.displayedLimitPercent > 0 &&
-         power.chargePercent > power.displayedLimitPercent + 1 && ![self item:BattItemDischargeToLimit].hidden);
-    battMenuAction(_handle, discharge ? BattItemDischargeToLimit : BattItemTopUp, NO);
+    BattMenuItem item = sender.tag == BattItemDischargeToLimit ? BattItemDischargeToLimit : BattItemTopUp;
+    battMenuAction(_handle, item, NO);
 }
 
 - (void)toggleKeepAwakeFromPopover:(NSButton *)sender {

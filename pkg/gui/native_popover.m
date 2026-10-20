@@ -721,6 +721,8 @@ static void Redisplay(NSView *view) {
         (!power.topUpActive && power.displayedLimitPercent > 0 &&
          power.chargePercent > power.displayedLimitPercent + 1 && ![c item:BattItemDischargeToLimit].hidden);
     _topUpButton.hidden = (offerDischarge ? NO : [c item:BattItemTopUp].hidden) || !power.pluggedIn;
+    // The click performs what the button shows, not a fresh guess.
+    _topUpButton.tag = offerDischarge ? BattItemDischargeToLimit : BattItemTopUp;
     if (offerDischarge) {
         _topUpButton.title = power.dischargingToLimit ? @"Stop Discharge" : @"Discharge";
         _topUpButton.selected = power.dischargingToLimit;
@@ -730,6 +732,13 @@ static void Redisplay(NSView *view) {
         _topUpButton.selected = power.topUpActive;
         _topUpButton.toolTip = @"Charge to 100% once; your limit returns when you unplug";
     }
+    _topUpButton.image = [NSImage imageWithSystemSymbolName:offerDischarge ? @"arrow.down" : @"bolt.fill"
+                                   accessibilityDescription:nil];
+    _topUpButton.accessibilityLabel = _topUpButton.title;
+    // Grow leftwards from the right edge so longer titles stay inside.
+    CGFloat textWidth = ceil([_topUpButton.title sizeWithAttributes:@{NSFontAttributeName: _topUpButton.font}].width);
+    CGFloat buttonWidth = MAX(100, textWidth + 40);
+    _topUpButton.frame = NSMakeRect(384 - buttonWidth, 320, buttonWidth, 20);
     c.heatButton.enabled = ![c item:BattItemHeatProtection].hidden;
     BOOL heatUnavailable = !c.heatButton.enabled;
     NSRect awakeFrame = NSMakeRect(heatUnavailable ? 24 : 204,158,heatUnavailable ? 352 : 172,44);
