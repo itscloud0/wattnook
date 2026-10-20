@@ -138,3 +138,39 @@ You must run this command as root.`,
 
 	return cmd
 }
+
+// NewInstallHelperCommand installs the WattNook helper used by the app.
+func NewInstallHelperCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:     "install-helper",
+		Short:   "Install or upgrade the WattNook charging helper (run as root)",
+		GroupID: gInstallation,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			exe, err := os.Executable()
+			if err != nil {
+				return err
+			}
+			if err := daemonutils.InstallHelper(exe); err != nil {
+				return err
+			}
+			cmd.Printf("WattNook helper installed at %s\n", daemonutils.HelperBinary)
+			return nil
+		},
+	}
+}
+
+// NewUninstallHelperCommand removes the WattNook helper.
+func NewUninstallHelperCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:     "uninstall-helper",
+		Short:   "Remove the WattNook charging helper (run as root)",
+		GroupID: gInstallation,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := daemonutils.UninstallHelper(); err != nil {
+				return err
+			}
+			cmd.Println("WattNook helper removed")
+			return nil
+		},
+	}
+}

@@ -241,6 +241,8 @@ Report issues: https://github.com/charlie0129/batt/issues`,
 		NewSetControlMagSafeLEDCommand(),
 		NewInstallCommand(),
 		NewUninstallCommand(),
+		NewInstallHelperCommand(),
+		NewUninstallHelperCommand(),
 		NewScheduleCommand(),
 		gui.NewGUICommand(""),
 	)

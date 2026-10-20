@@ -1,6 +1,8 @@
 package gui
 
 import (
+	daemonutils "github.com/charlie0129/batt/pkg/utils/daemon"
+
 	"bytes"
 	"fmt"
 	"os"
@@ -15,7 +17,14 @@ var (
 	battSymlinkLocation = "/usr/local/bin/batt"
 )
 
+// wattNookHelper is set when the app talks to the WattNook helper socket;
+// installation then uses install-helper instead of upstream batt's job.
+var wattNookHelper bool
+
 func isDaemonInstalled() bool {
+	if wattNookHelper {
+		return daemonutils.HelperInstalled()
+	}
 	plistPath := "/Library/LaunchDaemons/cc.chlc.batt.plist"
 	_, err := os.Stat(plistPath)
 	if err != nil {
@@ -46,7 +55,21 @@ func escapeShellInAppleScript(in string) string {
 }
 
 // uninstallDaemon removes daemon and resets charging limits.
+func runPrivileged(shellScript, action string) error {
+	output := &bytes.Buffer{}
+	cmd := exec.Command("/usr/bin/osascript", "-e", fmt.Sprintf("do shell script \"%s\" with administrator privileges", escapeShellInAppleScript(shellScript)))
+	cmd.Stderr = output
+	cmd.Stdout = output
+	if err := cmd.Run(); err != nil {
+		return pkgerrors.Wrapf(err, "failed to %s: %s", action, output.String())
+	}
+	return nil
+}
+
 func uninstallDaemon(exe string) error {
+	if wattNookHelper {
+		return runPrivileged(fmt.Sprintf(`"%s" uninstall-helper`, exe), "remove the WattNook helper")
+	}
 	shellScript := `
 set -e
 `
@@ -72,6 +95,9 @@ set -e
 
 // installDaemon uninstalls existing daemons first (if exists), installs the batt daemon and creates a symlink to the executable.
 func installDaemon(exe string) error {
+	if wattNookHelper {
+		return runPrivileged(fmt.Sprintf(`"%s" install-helper`, exe), "install the WattNook helper")
+	}
 	shellScript := `
 set -e
 `
