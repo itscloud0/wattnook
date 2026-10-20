@@ -305,7 +305,7 @@ int main(int argc, const char *argv[]) {
         // Page navigation is a selected surface; sorting alone uses an underline.
         assert(![[FindButton(view,@"Battery") valueForKey:@"tab"] boolValue]);
         assert(![[FindButton(view,@"System") valueForKey:@"tab"] boolValue]);
-        assert(![[FindButton(view,@"CPU") valueForKey:@"tab"] boolValue]);
+        assert([[FindButton(view,@"CPU") valueForKey:@"tab"] boolValue]);
         NSArray *contexts = @[[view valueForKey:@"_processCount"],
             [view valueForKey:@"_swap"], [view valueForKey:@"_availableSpace"]];
         // Column captions identify values before reading the measurements.
@@ -354,6 +354,7 @@ int main(int argc, const char *argv[]) {
             power.batteryWatts = [state[@"battery"] doubleValue]; power.systemWatts = [state[@"system"] doubleValue];
             power.chargingStateKnown = YES; power.batteryCharging = power.batteryWatts > 0.25;
             power.heatPaused = [state[@"heat"] boolValue]; power.temperatureCelsius = 36.5; power.processorTemperatureCelsius = 88.4;
+            power.healthPercent = 85; power.cycleCount = 358;
             power.hasTelemetry = ![state[@"name"] isEqual:@"unavailable"];
             BattRefreshPopover(c,63,81);
             Capture(view,directory,state[@"name"]);

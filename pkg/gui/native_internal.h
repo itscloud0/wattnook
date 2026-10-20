@@ -44,6 +44,9 @@ enum { WattHistoryCapacity = 90 };
 @property(nonatomic, assign) double temperatureCelsius;
 // Hottest CPU/GPU die sensor; <= 0 when unavailable.
 @property(nonatomic, assign) double processorTemperatureCelsius;
+// Capacity left against design capacity (0 = unknown) and charge cycles (-1 = unknown).
+@property(nonatomic, assign) NSInteger healthPercent;
+@property(nonatomic, assign) NSInteger cycleCount;
 @property(nonatomic, assign) NSInteger chargePercent;
 @property(nonatomic, assign) NSInteger limitPercent;
 @property(nonatomic, copy) NSArray<NSNumber *> *supportedLimits;

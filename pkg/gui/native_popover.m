@@ -81,7 +81,7 @@ static const CGFloat WattBatteryPopoverHeight = 532 - 142;
         [NSColor.keyboardFocusIndicatorColor setStroke]; path.lineWidth = 2; [path stroke];
     }
     NSColor *ink = !self.enabled ? NSColor.disabledControlTextColor :
-        _grouped && !_selected ? NSColor.secondaryLabelColor :
+        (_grouped || _tab) && !_selected ? NSColor.secondaryLabelColor :
         quietOn ? WattAccentColor() : NSColor.labelColor;
     CGFloat iconWidth = self.image ? 17 : (_swatch ? 10 : 0);
     // Small text actions keep the icon close to its word.
@@ -173,6 +173,23 @@ NSString *WattCompactBytes(double bytes, BOOL binary) {
     if (rounded >= base && unit < units.count-1) { rounded /= base; unit++; }
     return [NSString stringWithFormat:rounded == floor(rounded) ? @"%.0f %@" : @"%.1f %@",
         rounded,units[unit]];
+}
+
+// A settings group: one tone step above the popover, 12 pt corners, no
+// border or shadow (the AlDente/CleanMyMac grouping, without hairlines).
+@interface WattCardView : NSView
+@end
+@implementation WattCardView
+- (void)drawRect:(NSRect)rect {
+    (void)rect;
+    [[NSColor.whiteColor colorWithAlphaComponent:0.045] setFill];
+    [[NSBezierPath bezierPathWithRoundedRect:self.bounds xRadius:12 yRadius:12] fill];
+}
+@end
+static WattCardView *Card(NSView *parent, NSRect frame) {
+    WattCardView *card = [[[WattCardView alloc] initWithFrame:frame] autorelease];
+    [parent addSubview:card];
+    return card;
 }
 
 @interface WattAppRow : NSView
@@ -502,7 +519,6 @@ static void Redisplay(NSView *view) {
     for (NSTextField *context in @[_processCount,_swap,_availableSpace])
         context.alignment = NSTextAlignmentCenter;
     _availableSpace.toolTip = @"Free storage space on the startup volume";
-    [self line:_systemPage y:332];
     Label(_systemPage,NSMakeRect(24,306,180,20),@"Top consumers",13,YES);
     _cpuSort = Button(_systemPage, NSMakeRect(24,270,112,30), @"CPU", @"", self, @selector(sort:));
     _memorySort = Button(_systemPage, NSMakeRect(144,270,112,30), @"Memory", @"", self, @selector(sort:));
@@ -511,8 +527,10 @@ static void Redisplay(NSView *view) {
         sort.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
     _diskSort.tag = 2;
     _cpuSort.tag = 0; _cpuSort.selected = YES; _memorySort.tag = 1;
-    _cpuSort.grouped = _memorySort.grouped = _diskSort.grouped = YES;
-    _cpuSort.tab = _memorySort.tab = _diskSort.tab = NO;
+    // Sorting filters the list; it is underlined, never the filled pill that
+    // marks page navigation (DESIGN.md, the Destination Rule).
+    _cpuSort.grouped = _memorySort.grouped = _diskSort.grouped = NO;
+    _cpuSort.tab = _memorySort.tab = _diskSort.tab = YES;
     for (NSInteger i = 0; i < 6; i++) {
         WattAppRow *row = [[[WattAppRow alloc] initWithFrame:NSMakeRect(24, 226-i*34, 352, 34)] autorelease];
         [_systemPage addSubview:row]; row.controller = c; [_rows addObject:row];
@@ -528,34 +546,35 @@ static void Redisplay(NSView *view) {
     _historyChart = [[[WattHistoryView alloc] initWithFrame:NSMakeRect(24,40,352,360)] autorelease];
     [_historyPage addSubview:_historyChart];
     Label(_historyPage,NSMakeRect(24,12,352,18),@"10-second samples · kept in memory only",11,NO);
-    Label(_settingsPage,NSMakeRect(24,410,352,20),@"Appearance",13,YES);
-    Label(_settingsPage,NSMakeRect(24,382,352,18),@"Palette",12,NO);
+    // Grouped cards, heading above each (AlDente's settings rhythm).
+    Card(_settingsPage,NSMakeRect(24,340,352,62));
+    Card(_settingsPage,NSMakeRect(24,204,352,98));
+    Card(_settingsPage,NSMakeRect(24,98,352,68));
+    Label(_settingsPage,NSMakeRect(24,408,352,20),@"Appearance",13,YES);
     NSArray *palettes = @[@"Blue",@"Mint",@"Violet",@"Amber",@"Glass"];
     for (NSInteger i=0;i<palettes.count;i++) {
-        WattButton *palette = Button(_settingsPage,NSMakeRect(24+i*72,344,64,30),
+        WattButton *palette = Button(_settingsPage,NSMakeRect(32+i*68,356,64,30),
             palettes[i],@"",self,@selector(palette:));
         palette.tag = i; palette.grouped = YES; [_paletteButtons addObject:palette];
         palette.swatch = WattPaletteSwatch(palettes[i]);
         palette.hidden = [palettes[i] isEqual:@"Glass"] && !WattGlassAvailable();
     }
-    [self line:_settingsPage y:326];
-    Label(_settingsPage,NSMakeRect(24,296,352,20),@"Menu bar",13,YES);
+    Label(_settingsPage,NSMakeRect(24,308,352,20),@"Menu bar",13,YES);
     NSArray *titles = @[@"CPU load",@"Memory used",@"SSD used",@"Battery percentage",@"Battery icon"];
     for (NSInteger i=0;i<titles.count;i++) {
         NSButton *check = [NSButton checkboxWithTitle:titles[i] target:self action:@selector(menuMetric:)];
-        check.frame = NSMakeRect(24+(i%2)*184,260-(i/2)*28,168,24); check.tag = i;
+        check.frame = NSMakeRect(38+(i%2)*170,266-(i/2)*28,160,24); check.tag = i;
         check.font = [NSFont systemFontOfSize:12];
         [_settingsPage addSubview:check]; [_metricChecks addObject:check];
     }
-    [self line:_settingsPage y:188];
-    Label(_settingsPage,NSMakeRect(24,158,352,20),@"Monitoring",13,YES);
+    Label(_settingsPage,NSMakeRect(24,172,352,20),@"Monitoring",13,YES);
     _monitoringCheck = [NSButton checkboxWithTitle:@"System monitoring" target:self action:@selector(monitoring:)];
-    _monitoringCheck.frame = NSMakeRect(24,128,352,24); [_settingsPage addSubview:_monitoringCheck];
+    _monitoringCheck.frame = NSMakeRect(38,134,330,24); [_settingsPage addSubview:_monitoringCheck];
     _monitoringCheck.toolTip = @"Off stops CPU, memory, disk and process sampling and clears history. Battery controls remain available.";
     _historyCheck = [NSButton checkboxWithTitle:@"Keep 15-minute history" target:self action:@selector(monitoring:)];
-    _historyCheck.frame = NSMakeRect(24,100,352,24); [_settingsPage addSubview:_historyCheck];
+    _historyCheck.frame = NSMakeRect(38,106,330,24); [_settingsPage addSubview:_historyCheck];
     _historyCheck.toolTip = @"90 samples in memory. Off releases the history buffer; nothing is written to disk.";
-    _heatNotice = Label(_settingsPage,NSMakeRect(24,80,352,16),
+    _heatNotice = Label(_settingsPage,NSMakeRect(24,78,352,16),
         @"Heat protection unavailable on this Mac",10.5,NO);
     _heatNotice.hidden = YES;
     _heatNotice.toolTip = @"This Mac exposes no charge-only control WattNook can use while staying on adapter power.";

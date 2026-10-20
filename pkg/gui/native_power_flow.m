@@ -127,6 +127,17 @@ static NSBezierPath *Fork(CGFloat x0, CGFloat x1, CGFloat upperWidth,
     return all;
 }
 
+static void ReadingLine(NSString *name, NSString *value, NSColor *color, NSRect rect, NSColor *muted) {
+    NSMutableAttributedString *text = [[[NSMutableAttributedString alloc] initWithString:[name stringByAppendingString:@"  "]
+        attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:11 weight:NSFontWeightMedium],
+                     NSForegroundColorAttributeName:muted}] autorelease];
+    [text appendAttributedString:[[[NSAttributedString alloc] initWithString:value
+        attributes:@{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:14 weight:NSFontWeightMedium],
+                     NSForegroundColorAttributeName:color}] autorelease]];
+    NSSize measured = text.size;
+    [text drawAtPoint:NSMakePoint(NSMaxX(rect) - measured.width, NSMidY(rect) - measured.height / 2)];
+}
+
 static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRect rect, NSColor *muted) {
     NSMutableAttributedString *text = [[[NSMutableAttributedString alloc] initWithString:[name stringByAppendingString:@"  "]
         attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:11 weight:NSFontWeightMedium],
@@ -168,6 +179,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     // The focus ring is for keyboard users; a click or the popover opening
     // makes the rail first responder without asking for a ring.
     BOOL _keyboardFocus;
+    NSRect _healthTipRect;
     BOOL _limitMoved;
     NSPoint _limitDragStart;
     CAGradientLayer *_flowHighlight;
@@ -226,6 +238,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     self = [super initWithFrame:frame];
     if (self) {
         _chargePercent = -1;
+        _cycleCount = -1;
         _limitPercent = 80;
         _previewLimitPercent = 80;
     }
@@ -312,6 +325,14 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     if (_limitMoved) [self commitPreview];
 }
 
+- (NSString *)view:(NSView *)view stringForToolTip:(NSToolTipTag)tag point:(NSPoint)point userData:(void *)data {
+    (void)view; (void)tag; (void)point; (void)data;
+    NSString *cycles = self.cycleCount >= 0 ?
+        [NSString stringWithFormat:@" · %ld charge cycles", (long)self.cycleCount] : @"";
+    return [NSString stringWithFormat:@"Full-charge capacity is %ld%% of the design capacity%@",
+        (long)self.healthPercent, cycles];
+}
+
 - (BOOL)acceptsFirstResponder {
     return self.limitEditable;
 }
@@ -393,17 +414,35 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
          NSTextAlignmentLeft);
     // Battery and processor temperatures side by side: Heat Protection acts
     // on the battery, while a hot fanless Mac is usually the processor.
+    // Battery health joins them, as CleanMyMac's battery card does: the
+    // capacity left against the design capacity, with the cycle count.
     NSColor *headerMuted = NSColor.secondaryLabelColor;
     BOOL showCPU = self.processorTemperatureCelsius > 0;
+    BOOL showHealth = self.healthPercent > 0;
+    NSInteger lines = (self.temperatureCelsius > 0) + showCPU + showHealth;
+    CGFloat lineY = lines >= 3 ? 196 : (lines == 2 ? 186 : 174);
     if (self.temperatureCelsius > 0) {
-        NSColor *color = NSColor.labelColor;
-        TemperatureLine(@"Battery", self.temperatureCelsius, color,
-            NSMakeRect(right - 150, showCPU ? 186 : 174, 146, 20), headerMuted);
+        TemperatureLine(@"Battery", self.temperatureCelsius, NSColor.labelColor,
+            NSMakeRect(right - 150, lineY, 146, 20), headerMuted);
+        lineY -= lines >= 3 ? 20 : 22;
     }
     if (showCPU) {
         NSColor *color = self.processorTemperatureCelsius >= 85 ? NSColor.systemOrangeColor : NSColor.labelColor;
         TemperatureLine(@"CPU", self.processorTemperatureCelsius, color,
-            NSMakeRect(right - 150, 164, 146, 20), headerMuted);
+            NSMakeRect(right - 150, lineY, 146, 20), headerMuted);
+        lineY -= lines >= 3 ? 20 : 22;
+    }
+    if (showHealth) {
+        // Apple calls under 80% "Service Recommended"; only then is it a warning.
+        NSColor *color = self.healthPercent < 80 ? NSColor.systemOrangeColor : NSColor.labelColor;
+        NSRect healthRect = NSMakeRect(right - 150, lineY, 146, 20);
+        ReadingLine(@"Health", [NSString stringWithFormat:@"%ld%%", (long)self.healthPercent], color,
+            healthRect, headerMuted);
+        if (!NSEqualRects(healthRect, _healthTipRect)) {
+            [self removeAllToolTips];
+            [self addToolTipRect:healthRect owner:self userData:NULL];
+            _healthTipRect = healthRect;
+        }
     }
 
     NSRect rail = [self railRect];
@@ -440,9 +479,6 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
         [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(markerX - 1.5, 126, 3, 16) xRadius:2 yRadius:2] fill];
     }
     // The controller's non-interactive label never intercepts marker dragging.
-    [[NSColor colorWithCalibratedWhite:dark ? 0.28 : 0.80 alpha:1] setFill];
-    // Same 20 pt inset as the rail and the flow nodes.
-    NSRectFill(NSMakeRect(20, 104, width - 40, 0.7));
 
     if (!self.hasTelemetry) {
         [self updateAnimationMask:[NSBezierPath bezierPath]];

@@ -54,6 +54,21 @@ void BattApplyBatterySnapshot(BattMenuController *controller, NSDictionary *batt
         charging:known && connected.boolValue && ([charging isKindOfClass:NSNumber.class]
             ? charging.boolValue : isfinite(watts) && watts > 0.25)
         heatPaused:controller.powerFlowView.heatPaused present:present needsService:service];
+    // Health: full-charge capacity against design capacity. macOS 27 keeps
+    // both in BatteryData; older releases report them at the top level.
+    NSDictionary *data = [battery[@"BatteryData"] isKindOfClass:NSDictionary.class] ? battery[@"BatteryData"] : @{};
+    NSNumber *full = data[@"NominalChargeCapacity"] ?: battery[@"NominalChargeCapacity"] ?: battery[@"AppleRawMaxCapacity"];
+    NSNumber *design = data[@"DesignCapacity"] ?: battery[@"DesignCapacity"];
+    BattPowerFlowView *flow = controller.powerFlowView;
+    if ([full isKindOfClass:NSNumber.class] && [design isKindOfClass:NSNumber.class] &&
+        design.doubleValue > 0 && full.doubleValue > 0) {
+        NSInteger health = (NSInteger)lround(MIN(100.0, 100.0 * full.doubleValue / design.doubleValue));
+        if (health != flow.healthPercent) { flow.healthPercent = health; flow.needsDisplay = YES; }
+    }
+    NSNumber *cycles = battery[@"CycleCount"];
+    if ([cycles isKindOfClass:NSNumber.class]) {
+        flow.cycleCount = cycles.integerValue;
+    }
     if ([connected isKindOfClass:NSNumber.class] && [voltage isKindOfClass:NSNumber.class] &&
         [current isKindOfClass:NSNumber.class] && [charge isKindOfClass:NSNumber.class]) {
         BOOL plugged = connected.boolValue;
