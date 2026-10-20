@@ -34,6 +34,8 @@ type Config interface {
 	// TopUpRestoreLimit is the Apple limit to restore afterwards.
 	TopUpActive() bool
 	TopUpRestoreLimit() int
+	// DischargeActive drains the battery on AC down to the limit, once.
+	DischargeActive() bool
 
 	SetUpperLimit(int)
 	SetLowerLimit(int)
@@ -54,6 +56,7 @@ type Config interface {
 	SetCustomChargeLimit(int)
 	SetSailingLevel(int)
 	SetTopUp(active bool, restoreLimit int)
+	SetDischarge(active bool)
 
 	LogrusFields() logrus.Fields
 

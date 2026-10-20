@@ -52,6 +52,7 @@ func setupRoutes() *gin.Engine {
 	router.PUT("/heat-protection", setHeatProtection)
 	router.PUT("/sailing", setSailing)
 	router.PUT("/top-up", setTopUp)
+	router.PUT("/discharge", setDischarge)
 	router.PUT("/adapter", setAdapter)
 	router.PUT("/adapter/disable", setAdapterDisableFor)
 	router.GET("/adapter", getAdapter)

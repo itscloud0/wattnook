@@ -34,6 +34,8 @@ func (c *menuController) handleAction(item menuItem, checked bool) {
 		c.setPreventSystemSleep(checked)
 	case itemTopUp:
 		c.toggleTopUp()
+	case itemDischargeToLimit:
+		c.toggleDischarge()
 	case itemSailingOff:
 		c.setSailing(0)
 	case itemSailing5:
@@ -357,6 +359,13 @@ func (c *menuController) toggleTopUp() {
 func (c *menuController) setSailing(level int) {
 	if _, err := c.api.SetSailing(level); err != nil {
 		showAlert("Sailing not changed", err.Error())
+	}
+	c.updateTelemetry()
+}
+
+func (c *menuController) toggleDischarge() {
+	if _, err := c.api.SetDischarge(!c.discharging); err != nil {
+		showAlert("Discharge not changed", err.Error())
 	}
 	c.updateTelemetry()
 }

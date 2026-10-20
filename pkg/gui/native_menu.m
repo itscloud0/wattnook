@@ -319,6 +319,17 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     battMenuAction(_handle, BattItemTopUp, NO);
 }
 
+// One contextual button: Discharge when the charge is above the limit (or
+// already discharging), Top Up otherwise.
+- (void)chargeActionFromPopover:(NSButton *)sender {
+    (void)sender;
+    BattPowerFlowView *power = self.powerFlowView;
+    BOOL discharge = power.dischargingToLimit ||
+        (!power.topUpActive && power.displayedLimitPercent > 0 &&
+         power.chargePercent > power.displayedLimitPercent + 1 && ![self item:BattItemDischargeToLimit].hidden);
+    battMenuAction(_handle, discharge ? BattItemDischargeToLimit : BattItemTopUp, NO);
+}
+
 - (void)toggleKeepAwakeFromPopover:(NSButton *)sender {
     (void)sender;
     [self toggleKeepAwake];
@@ -951,6 +962,7 @@ void BattBuildMenu(BattMenuController *controller, NSString *version) {
     [heat addItem:[NSMenuItem separatorItem]];
     [heat addItem:ActionItem(controller, @"Custom…", @"", BattItemHeatCustom)];
     [root addItem:ActionItem(controller, @"Top Up to 100%", @"", BattItemTopUp)];
+    [root addItem:ActionItem(controller, @"Discharge to Limit", @"", BattItemDischargeToLimit)];
     NSMenu *sailing = AddSubmenu(controller, root, @"Sailing", BattItemSailing);
     [sailing addItem:ActionItem(controller, @"Off", @"", BattItemSailingOff)];
     [sailing addItem:ActionItem(controller, @"5% below the limit", @"", BattItemSailing5)];

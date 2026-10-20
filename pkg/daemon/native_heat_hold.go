@@ -45,16 +45,23 @@ type nativeHeatHold struct {
 	sailingLevel func() int
 	topUpState   func() (bool, int)
 	clearTopUp   func()
+	discharge    func() bool
+	endDischarge func()
 	// USB-PD contract check around adapter pulses.
-	contract       func() (adapterContract, error)
-	contractWait   time.Duration
-	sleep          func(time.Duration)
+	contract     func() (adapterContract, error)
+	contractWait time.Duration
+	sleep        func(time.Duration)
+	// pulseSettle ignores "unplugged" readings this long after a pulse: the
+	// adapter input is briefly off, which is not the user pulling the cable.
+	pulseSettle    time.Duration
 	adapterWarning string
+	ignoredSince   time.Time
 	// reserveLatched blocks heat holds after a reserve release until rearm.
 	reserveLatched bool
 	// Why the active hold exists and where it is.
 	forHeat   bool
 	forSail   bool
+	forDrain  bool
 	forLimit  int
 	target    int
 	sailArmed bool
@@ -141,14 +148,22 @@ func initializeHeatHold(configPath string) {
 		customLimit:  func() int { return conf.CustomChargeLimit() },
 		sailingLevel: func() int { return conf.SailingLevel() },
 		topUpState:   func() (bool, int) { return conf.TopUpActive(), conf.TopUpRestoreLimit() },
+		discharge:    func() bool { return conf.DischargeActive() },
+		endDischarge: func() {
+			conf.SetDischarge(false)
+			if err := conf.Save(); err != nil {
+				logrus.WithError(err).Error("save config after discharge")
+			}
+		},
 		clearTopUp: func() {
 			conf.SetTopUp(false, 0)
 			if err := conf.Save(); err != nil {
 				logrus.WithError(err).Error("save config after Top Up")
 			}
 		},
-		contract: readAdapterContract,
-		sleep:    time.Sleep,
+		contract:    readAdapterContract,
+		sleep:       time.Sleep,
+		pulseSettle: 15 * time.Second,
 	}
 }
 
@@ -209,7 +224,6 @@ func (h *nativeHeatHold) publish(status HeatProtectionStatus) {
 func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 	status := HeatProtectionStatus{Enabled: enabled, PauseTemperatureCelsius: pause, ResumeTemperatureCelsius: resume}
 	defer func() { h.publish(status) }()
-	h.refreshAdapterWarning()
 	custom, sailing := 0, 0
 	if h.customLimit != nil {
 		custom = h.customLimit()
@@ -221,7 +235,8 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 	if h.topUpState != nil {
 		topUp, restore = h.topUpState()
 	}
-	status.SailingLevel, status.TopUp = sailing, topUp
+	draining := h.discharge != nil && h.discharge()
+	status.SailingLevel, status.TopUp, status.Discharging = sailing, topUp, draining
 	if !enabled {
 		h.fault = ""
 		status.Reason = "disabled"
@@ -229,8 +244,9 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 	if h.fault != "" {
 		return
 	}
-	if !enabled && custom == 0 && sailing == 0 && !topUp {
-		h.forHeat, h.forSail, h.forLimit, h.sailArmed = false, false, 0, false
+	if !enabled && custom == 0 && sailing == 0 && !topUp && !draining {
+		h.forHeat, h.forSail, h.forDrain, h.forLimit, h.sailArmed = false, false, false, 0, false
+		h.refreshAdapterWarning(true)
 		if err := h.release(); err != nil {
 			logrus.WithError(err).Error("charge hold release")
 		}
@@ -241,12 +257,20 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 		status.LastError = err.Error()
 		return
 	}
+	h.refreshAdapterWarning(sample.PluggedIn)
 	temperature := sample.Temperature
 	if enabled {
 		status.TemperatureCelsius = &temperature
 	}
+	unplugged := !sample.PluggedIn && time.Since(h.lastTransition) >= h.pulseSettle
+	if draining && (topUp || unplugged) {
+		// Discharge is a one-shot on AC; unplugging or Top Up ends it.
+		h.stopDischarge()
+		draining = false
+		status.Discharging = false
+	}
 	if topUp {
-		if !sample.PluggedIn {
+		if unplugged {
 			// Unplugging ends Top Up and brings the previous limit back.
 			h.endTopUp(restore)
 			topUp = false
@@ -287,7 +311,7 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 
 	// The limit the battery charges to: the custom limit, otherwise Apple's.
 	limit := custom
-	if limit == 0 && !topUp && (sailing > 0 || (hot && !(h.forHeat && active))) {
+	if limit == 0 && !topUp && (sailing > 0 || draining || (hot && !(h.forHeat && active))) {
 		limit, err = h.effectiveAppleLimit(active)
 		if err != nil {
 			status.LastError = err.Error()
@@ -300,8 +324,20 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 		hot = false
 	}
 
+	drain := false
+	if draining {
+		if limit <= 0 || sample.Percent <= limit {
+			// Reached the limit: hand over to the normal limit behaviour.
+			h.stopDischarge()
+			status.Discharging = false
+		} else {
+			// Draining keeps the battery from charging, so heat is moot.
+			drain, hot = true, false
+		}
+	}
+
 	sail := false
-	if sailing > 0 && limit > 0 {
+	if sailing > 0 && limit > 0 && !drain {
 		if sample.Percent >= limit {
 			h.sailArmed = true
 		}
@@ -314,8 +350,8 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 		h.sailArmed = false
 	}
 
-	if !hot && !sail && custom == 0 {
-		h.forHeat, h.forSail, h.forLimit = false, false, 0
+	if !hot && !sail && !drain && custom == 0 {
+		h.forHeat, h.forSail, h.forDrain, h.forLimit = false, false, false, 0
 		if active {
 			status.Requested = "released"
 			if err := h.release(); err != nil {
@@ -331,13 +367,16 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 	// follows the charge down: once the battery drained on battery and is back
 	// on AC, lower the target so it never charges back up. Only on AC, so
 	// draining on battery does not pulse the adapter for every percent.
-	drained := !hot && active && !h.forHeat && sample.PluggedIn && sample.Percent < h.target &&
+	drained := !hot && !drain && active && !h.forHeat && sample.PluggedIn && sample.Percent < h.target &&
 		((sail && h.forSail) || (!sail && !h.forSail && h.forLimit == custom && h.target > custom))
-	sameReason := active && hot == h.forHeat && sail == h.forSail && (hot || sail || h.forLimit == custom)
+	sameReason := active && hot == h.forHeat && sail == h.forSail && drain == h.forDrain &&
+		(hot || sail || drain || h.forLimit == custom)
 	if sameReason && !drained {
 		status.Requested = "held"
 		if hot {
 			status.Reason = "cooling"
+		} else if drain {
+			status.Reason = "discharging to the limit"
 		} else if sail {
 			status.Reason = "sailing"
 		}
@@ -357,6 +396,10 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 		if ceiling := max(custom, sample.Percent); custom > 0 && target > ceiling {
 			target = ceiling
 		}
+	case drain:
+		// A target below the charge makes macOS run the Mac partly from the
+		// battery on AC until it reaches the target; the adapter stays on.
+		target = limit
 	case sail:
 		// Hold where the charge drifted to; it falls further only on battery.
 	case custom > target:
@@ -369,7 +412,7 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 	status.Requested = "held"
 	if active && target == h.target {
 		// Same target, new reason (e.g. heat starts at the limit): no pulse.
-		h.forHeat, h.forSail, h.forLimit = hot, sail, custom
+		h.forHeat, h.forSail, h.forDrain, h.forLimit = hot, sail, drain, custom
 		return
 	}
 	err = h.guardAdapterContract(func() error {
@@ -383,9 +426,9 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 		logrus.WithError(err).Error("charge hold")
 		return
 	}
-	h.forHeat, h.forSail, h.forLimit, h.target = hot, sail, custom, target
+	h.forHeat, h.forSail, h.forDrain, h.forLimit, h.target = hot, sail, drain, custom, target
 	h.lastTransition = time.Now()
-	logrus.WithFields(logrus.Fields{"target": target, "heat": hot, "sailing": sail, "customLimit": custom, "temperatureCelsius": temperature}).
+	logrus.WithFields(logrus.Fields{"target": target, "heat": hot, "sailing": sail, "discharge": drain, "customLimit": custom, "temperatureCelsius": temperature}).
 		Info("charge hold set; adapter keeps powering the Mac")
 }
 
@@ -401,6 +444,14 @@ func (h *nativeHeatHold) effectiveAppleLimit(active bool) (int, error) {
 		}
 	}
 	return h.appleLimit()
+}
+
+// stopDischarge ends a discharge (reached the limit, unplugged, Top Up).
+func (h *nativeHeatHold) stopDischarge() {
+	if h.endDischarge != nil {
+		h.endDischarge()
+	}
+	logrus.Info("discharge finished")
 }
 
 // endTopUp clears Top Up and restores the Apple limit it replaced.

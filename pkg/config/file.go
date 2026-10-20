@@ -140,6 +140,7 @@ type RawFileConfig struct {
 	SailingLevel      *int  `json:"sailingLevel,omitempty"`
 	TopUpActive       *bool `json:"topUpActive,omitempty"`
 	TopUpRestoreLimit *int  `json:"topUpRestoreLimit,omitempty"`
+	DischargeActive   *bool `json:"dischargeActive,omitempty"`
 }
 
 func NewRawFileConfigFromConfig(c Config) (*RawFileConfig, error) {
@@ -166,6 +167,9 @@ func NewRawFileConfigFromConfig(c Config) (*RawFileConfig, error) {
 	}
 	if level := c.SailingLevel(); level > 0 {
 		rawConfig.SailingLevel = ptr.To(level)
+	}
+	if c.DischargeActive() {
+		rawConfig.DischargeActive = ptr.To(true)
 	}
 	if c.TopUpActive() {
 		rawConfig.TopUpActive = ptr.To(true)
@@ -673,6 +677,22 @@ func (f *File) SetTopUp(active bool, restoreLimit int) {
 		return
 	}
 	f.c.TopUpActive, f.c.TopUpRestoreLimit = ptr.To(true), ptr.To(restoreLimit)
+}
+
+func (f *File) DischargeActive() bool {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.c != nil && f.c.DischargeActive != nil && *f.c.DischargeActive
+}
+
+func (f *File) SetDischarge(active bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !active {
+		f.c.DischargeActive = nil
+		return
+	}
+	f.c.DischargeActive = ptr.To(true)
 }
 
 func (f *File) SetCustomChargeLimit(limit int) {

@@ -67,6 +67,7 @@ typedef enum {
     BattItemDisableLimit3Days,
     BattItemDisableLimit7Days,
     BattItemTopUp,
+    BattItemDischargeToLimit,
     BattItemSailing,
     BattItemSailingOff,
     BattItemSailing5,
@@ -93,7 +94,7 @@ void batt_menu_set_checked(BattMenuRef menu, int item, bool checked);
 void batt_menu_set_status_icon(BattMenuRef menu, bool installed, bool capable, bool needs_upgrade);
 void batt_menu_set_power(BattMenuRef menu, int item, const char *label, double value);
 void batt_menu_set_heat_status(BattMenuRef menu, bool paused, double temperature_celsius);
-void batt_menu_set_charge_modes(BattMenuRef menu, bool top_up, bool sailing, int sailing_level);
+void batt_menu_set_charge_modes(BattMenuRef menu, bool top_up, bool sailing, int sailing_level, bool discharging);
 void batt_menu_set_heat_detail(BattMenuRef menu, const char *detail);
 void batt_menu_set_processor_temperature(BattMenuRef menu, double celsius);
 void batt_menu_set_power_flow(BattMenuRef menu, double adapter, double system, double battery,

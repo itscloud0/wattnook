@@ -23,7 +23,7 @@ func TestParseAdapterContract(t *testing.T) {
 func TestPulseThatDropsAdapterTo5VWarnsUntilReconnect(t *testing.T) {
 	h, holder, _ := newHoldFixture(heatHoldSample{Temperature: 40, Percent: 72, PluggedIn: true})
 	contracts := []adapterContract{{Index: 3}} // before the pulse
-	current := adapterContract{Index: 255}    // after: fell back to 5 V
+	current := adapterContract{Index: 255}     // after: fell back to 5 V
 	h.contract = func() (adapterContract, error) {
 		if len(contracts) > 0 {
 			c := contracts[0]
@@ -54,5 +54,35 @@ func TestPulseThatKeeps20VDoesNotWarn(t *testing.T) {
 	h.reconcile(true, 35, 32)
 	if w := getHeatProtectionStatusUnchecked().AdapterWarning; w != "" {
 		t.Fatalf("unexpected warning %q", w)
+	}
+}
+
+// Seen live on macOS 27: a 20 V charger with ExternalConnected = No and the
+// Mac on battery until the cable was replugged.
+func TestIgnoredChargerWarnsUntilReconnect(t *testing.T) {
+	ignored := `"ExternalConnected" = No "UsbHvcHvcIndex"=3 "SystemVoltageIn"=20418`
+	if c, err := parseAdapterContract(ignored); err != nil || !c.Ignored {
+		t.Fatalf("%+v %v", c, err)
+	}
+	if c, _ := parseAdapterContract(`"ExternalConnected" = Yes "UsbHvcHvcIndex"=3 "SystemVoltageIn"=20418`); c.Ignored {
+		t.Fatal("connected charger reported as ignored")
+	}
+
+	h, _, _ := newHoldFixture(heatHoldSample{Temperature: 25, Percent: 57})
+	current := adapterContract{Index: 3, VoltageMV: 20418, Ignored: true}
+	h.contract = func() (adapterContract, error) { return current, nil }
+	h.refreshAdapterWarning(false)
+	if h.adapterWarning != "" {
+		t.Fatal("warned before the ignored state lasted")
+	}
+	h.ignoredSince = time.Now().Add(-time.Minute)
+	h.refreshAdapterWarning(false)
+	if h.adapterWarning != adapterIgnoredWarning {
+		t.Fatalf("warning=%q", h.adapterWarning)
+	}
+	current.Ignored = false
+	h.refreshAdapterWarning(false)
+	if h.adapterWarning != "" {
+		t.Fatal("warning kept after reconnect")
 	}
 }

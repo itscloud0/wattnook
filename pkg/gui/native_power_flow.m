@@ -362,13 +362,15 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     BOOL atLimit = adapter && !charging && !discharging &&
         limit >= 0 && limit < 100 && self.chargePercent >= limit - 1;
     NSString *state = !self.hasTelemetry ? @"Power data unavailable" :
-        (hybrid ? @"AC + battery" :
+        (hybrid && !self.dischargingToLimit ? @"AC + battery" :
          (self.heatPaused && self.pluggedIn ? @"Charging paused · heat" :
          (self.topUpActive && self.pluggedIn ? @"Top Up · charging to 100%" :
+         (self.dischargingToLimit && self.pluggedIn && limit > 0 ?
+            [NSString stringWithFormat:@"Discharging to %ld%% · adapter on", (long)limit] :
          (self.sailing && self.pluggedIn && limit > 0 ?
             [NSString stringWithFormat:@"Sailing · charges again at %ld%%", (long)MAX(0, limit - self.sailingLevel)] :
           (statusCharging ? @"Charging" :
-           (atLimit ? @"Charge limit reached" : (adapter ? @"Plugged in" : @"On battery")))))));
+           (atLimit ? @"Charge limit reached" : (adapter ? @"Plugged in" : @"On battery"))))))));
     NSString *chargeText = self.chargePercent < 0 ? @"—%" :
         [NSString stringWithFormat:@"%ld%%", (long)charge];
 

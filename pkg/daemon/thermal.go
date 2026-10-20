@@ -32,6 +32,7 @@ type HeatProtectionStatus struct {
 	SailingLevel int  `json:"sailingLevel,omitempty"`
 	Sailing      bool `json:"sailing,omitempty"`
 	TopUp        bool `json:"topUp,omitempty"`
+	Discharging  bool `json:"discharging,omitempty"`
 }
 
 var (

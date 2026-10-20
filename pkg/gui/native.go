@@ -83,6 +83,7 @@ const (
 	itemUninstall               menuItem = C.BattItemUninstall
 	itemDisableLimit            menuItem = C.BattItemDisableLimit
 	itemTopUp                   menuItem = C.BattItemTopUp
+	itemDischargeToLimit        menuItem = C.BattItemDischargeToLimit
 	itemSailing                 menuItem = C.BattItemSailing
 	itemSailingOff              menuItem = C.BattItemSailingOff
 	itemSailing5                menuItem = C.BattItemSailing5
@@ -227,8 +228,8 @@ func (m *nativeMenu) setHeatStatus(paused bool, temperatureCelsius float64) {
 	C.batt_menu_set_heat_status(m.ref, C.bool(paused), C.double(temperatureCelsius))
 }
 
-func (m *nativeMenu) setChargeModes(topUp, sailing bool, level int) {
-	C.batt_menu_set_charge_modes(m.ref, C.bool(topUp), C.bool(sailing), C.int(level))
+func (m *nativeMenu) setChargeModes(topUp, sailing bool, level int, discharging bool) {
+	C.batt_menu_set_charge_modes(m.ref, C.bool(topUp), C.bool(sailing), C.int(level), C.bool(discharging))
 }
 
 func (m *nativeMenu) setProcessorTemperature(celsius float64) {

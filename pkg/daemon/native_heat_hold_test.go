@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charlie0129/batt/pkg/config"
 )
@@ -522,5 +523,67 @@ func TestTopUpAPIStartsAndManualLimitEndsIt(t *testing.T) {
 	}
 	if code := put("/sailing", "10"); code != 201 || conf.SailingLevel() != 10 {
 		t.Fatalf("sailing: %d level=%d", code, conf.SailingLevel())
+	}
+}
+
+func TestDischargeDrainsToTheLimitThenHolds(t *testing.T) {
+	h, holder, s := newModesFixture(heatHoldSample{Temperature: 40, Percent: 76, PluggedIn: true}, 80)
+	discharging := true
+	h.customLimit = func() int { return 70 }
+	h.discharge = func() bool { return discharging }
+	h.endDischarge = func() { discharging = false }
+	h.reconcile(true, 35, 32)
+	// Heat is moot while draining: the hold targets the limit, below the charge.
+	if len(holder.holds) != 1 || holder.holds[0] != 70 || !getHeatProtectionStatusUnchecked().Discharging {
+		t.Fatalf("discharge hold: %v", holder.holds)
+	}
+	s.Percent = 73
+	h.reconcile(true, 35, 32)
+	if len(holder.retargets) != 0 {
+		t.Fatalf("retargeted mid-discharge: %v", holder.retargets)
+	}
+	// Reaching the limit ends discharge without another pulse; heat resumes
+	// next pass with the hold already at the limit.
+	s.Percent = 70
+	h.reconcile(true, 35, 32)
+	if discharging || getHeatProtectionStatusUnchecked().Discharging {
+		t.Fatal("discharge not finished at the limit")
+	}
+}
+
+func TestDischargeEndsWhenUnplugged(t *testing.T) {
+	h, holder, s := newModesFixture(heatHoldSample{Temperature: 25, Percent: 76, PluggedIn: true}, 80)
+	discharging := true
+	h.customLimit = func() int { return 70 }
+	h.discharge = func() bool { return discharging }
+	h.endDischarge = func() { discharging = false }
+	h.reconcile(false, 35, 32)
+	s.PluggedIn = false
+	h.reconcile(false, 35, 32)
+	if discharging {
+		t.Fatal("discharge continued on battery")
+	}
+	_ = holder
+}
+
+// The pulse that sets a hold switches the adapter input off for a moment;
+// that reading must not end Discharge or Top Up as if the cable were pulled.
+func TestPulseBlipDoesNotEndDischarge(t *testing.T) {
+	h, holder, s := newModesFixture(heatHoldSample{Temperature: 25, Percent: 76, PluggedIn: true}, 80)
+	h.pulseSettle = time.Minute
+	discharging := true
+	h.customLimit = func() int { return 70 }
+	h.discharge = func() bool { return discharging }
+	h.endDischarge = func() { discharging = false }
+	h.reconcile(false, 35, 32)
+	s.PluggedIn = false
+	h.reconcile(false, 35, 32)
+	if !discharging || len(holder.holds) != 1 || holder.holds[0] != 70 {
+		t.Fatalf("discharging=%v holds=%v", discharging, holder.holds)
+	}
+	h.lastTransition = time.Now().Add(-2 * time.Minute)
+	h.reconcile(false, 35, 32)
+	if discharging {
+		t.Fatal("discharge continued after a real unplug")
 	}
 }

@@ -54,3 +54,13 @@ Live, 2026-10-20 00:47: daemon `8fbc40d8…`, PUT /limit 70 at 81% (Apple 80%, A
 ## Adapter fell back to 5 V after a pulse — 2026-10-20
 
 After a heat hold at 15:13 the 60 W charger sat at `UsbHvcHvcIndex=255` (no high-voltage PD contract): ~4 V × 2.9 A = 11.7 W in while the Mac drew ~17–21 W, so the battery drained on AC. Reconnecting the cable restored index 3 (20 V, 42.6 W in). The daemon now records the PD contract before every hold/retarget/release pulse and waits up to 8 s for a high-voltage contract afterwards; if it does not return, `/heat-protection` carries `adapterWarning` and the GUI asks to reconnect the cable. The warning clears once 20 V is back.
+
+## Discharge on AC — 2026-10-21
+
+`PUT /discharge true` (GUI: **Discharge to Limit**, or the contextual Battery button when the charge is above the limit) holds at the limit while the charge is above it; macOS then runs the Mac partly from the battery with the adapter connected. It ends at the limit, on unplug or on Top Up, and outranks heat (draining never charges).
+
+Live, MacBook Air M4, macOS 27, 70 W adapter at 20 V, battery 57 %, custom limit 55:
+
+- Run 2 (02:52): hold 55 → battery −0.67 A within 5 s, −1.4…−1.6 A after two minutes, `ExternalConnected = Yes`, PD index 3 throughout. Stop → heat hold at 57; current returned to 0 mA after ~50 s. No replug needed.
+- Run 1 (02:48): no drain within the 40 s observed before stopping; macOS re-evaluates on its own schedule (compare the ~50 s delay before charging in the run-above probe).
+- First attempt (02:18): the pulse's brief adapter-off reading ended Discharge after 2 s (fixed: "unplugged" is ignored for 15 s after a pulse). Within 12 s macOS reported `ExternalConnected = No`, `PMUConfiguration = 0` while the charger stayed at 20 V (`SystemVoltageIn` 20.4 V); the Mac ran on battery at ~0.9 A. A retarget pulse, the release pulse and 3 minutes without a hold did not recover it; replugging the cable did. Not reproduced since. The daemon now reports `adapterWarning` ("reconnect the cable") when a live high-voltage charger is ignored for 30 s.

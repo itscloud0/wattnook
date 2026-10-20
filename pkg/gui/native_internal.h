@@ -55,6 +55,7 @@ enum { WattHistoryCapacity = 90 };
 @property(nonatomic, assign) BOOL topUpActive;
 @property(nonatomic, assign) BOOL sailing;
 @property(nonatomic, assign) NSInteger sailingLevel;
+@property(nonatomic, assign) BOOL dischargingToLimit;
 @property(nonatomic, assign) BOOL hasTelemetry;
 @property(nonatomic, assign) BOOL limitEditable;
 @property(nonatomic, assign) id limitTarget;

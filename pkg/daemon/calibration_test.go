@@ -31,11 +31,14 @@ type mockConf struct {
 	sailing             int
 	topUp               bool
 	topUpRestore        int
+	discharge           bool
 }
 
 func (m *mockConf) CustomChargeLimit() int { return m.customLimit }
 func (m *mockConf) SailingLevel() int      { return m.sailing }
 func (m *mockConf) SetSailingLevel(v int)  { m.sailing = v }
+func (m *mockConf) DischargeActive() bool  { return m.discharge }
+func (m *mockConf) SetDischarge(v bool)    { m.discharge = v }
 func (m *mockConf) TopUpActive() bool      { return m.topUp }
 func (m *mockConf) TopUpRestoreLimit() int { return m.topUpRestore }
 func (m *mockConf) SetTopUp(active bool, restore int) {

@@ -103,12 +103,18 @@ type HeatProtectionStatus struct {
 	SailingLevel             int       `json:"sailingLevel,omitempty"`
 	Sailing                  bool      `json:"sailing,omitempty"`
 	TopUp                    bool      `json:"topUp,omitempty"`
+	Discharging              bool      `json:"discharging,omitempty"`
 }
 
 // SetSailing sets how many points the charge may drift below the limit
 // before charging again (0 turns Sailing off).
 func (c *Client) SetSailing(level int) (string, error) {
 	return c.Put("/sailing", strconv.Itoa(level))
+}
+
+// SetDischarge starts or stops draining on AC down to the limit.
+func (c *Client) SetDischarge(enabled bool) (string, error) {
+	return c.Put("/discharge", strconv.FormatBool(enabled))
 }
 
 // SetTopUp starts or stops charging to 100% until the adapter is unplugged.

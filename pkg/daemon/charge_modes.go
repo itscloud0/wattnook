@@ -105,3 +105,33 @@ func setTopUp(c *gin.Context) {
 	logrus.Info("Top Up started")
 	c.IndentedJSON(http.StatusCreated, "Top Up started")
 }
+
+// setDischarge drains the battery on AC down to the limit once, keeping the
+// adapter connected. It ends at the limit, on unplug, or with Top Up.
+func setDischarge(c *gin.Context) {
+	if !requireChargeHold(c) {
+		return
+	}
+	var enabled bool
+	if err := c.BindJSON(&enabled); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
+		return
+	}
+	maintainLoopInnerLock.Lock()
+	defer maintainLoopInnerLock.Unlock()
+	if enabled && conf.TopUpActive() {
+		heatHold.endTopUp(conf.TopUpRestoreLimit())
+	}
+	conf.SetDischarge(enabled)
+	if err := conf.Save(); err != nil {
+		conf.SetDischarge(!enabled)
+		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+	reconcileChargeHold()
+	if enabled && !conf.DischargeActive() {
+		c.AbortWithStatusJSON(http.StatusConflict, "Discharge needs the charger connected and a charge above the limit")
+		return
+	}
+	c.IndentedJSON(http.StatusCreated, "Discharge updated")
+}

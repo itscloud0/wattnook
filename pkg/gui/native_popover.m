@@ -434,7 +434,7 @@ static void Redisplay(NSView *view) {
     [_batteryPage addSubview:_limitLabel];
     // Top Up sits with the limit it overrides.
     _topUpButton = Button(_batteryPage, NSMakeRect(284, 320, 100, 20), @"Top Up", @"bolt.fill",
-        c, @selector(toggleTopUpFromPopover:));
+        c, @selector(chargeActionFromPopover:));
     _topUpButton.plain = YES;
     _topUpButton.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
     _topUpButton.toolTip = @"Charge to 100% once; your limit returns when you unplug";
@@ -716,9 +716,20 @@ static void Redisplay(NSView *view) {
     [c item:BattItemKeepAwake].enabled = c.darkButton.enabled;
     [c item:BattItemKeepAwake].title = c.keepAwakeStatus == nil ? @"Keep Awake: status unavailable" : awake ? @"Keep Awake: On — turn off" : @"Keep Awake: closed-lid work";
     c.darkButton.accessibilityLabel = c.darkButton.title;
-    _topUpButton.hidden = [c item:BattItemTopUp].hidden || !c.powerFlowView.pluggedIn;
-    _topUpButton.title = c.powerFlowView.topUpActive ? @"Stop Top Up" : @"Top Up";
-    _topUpButton.selected = c.powerFlowView.topUpActive;
+    BattPowerFlowView *power = c.powerFlowView;
+    BOOL offerDischarge = power.dischargingToLimit ||
+        (!power.topUpActive && power.displayedLimitPercent > 0 &&
+         power.chargePercent > power.displayedLimitPercent + 1 && ![c item:BattItemDischargeToLimit].hidden);
+    _topUpButton.hidden = (offerDischarge ? NO : [c item:BattItemTopUp].hidden) || !power.pluggedIn;
+    if (offerDischarge) {
+        _topUpButton.title = power.dischargingToLimit ? @"Stop Discharge" : @"Discharge";
+        _topUpButton.selected = power.dischargingToLimit;
+        _topUpButton.toolTip = @"Run on battery while plugged in, down to your limit";
+    } else {
+        _topUpButton.title = power.topUpActive ? @"Stop Top Up" : @"Top Up";
+        _topUpButton.selected = power.topUpActive;
+        _topUpButton.toolTip = @"Charge to 100% once; your limit returns when you unplug";
+    }
     c.heatButton.enabled = ![c item:BattItemHeatProtection].hidden;
     BOOL heatUnavailable = !c.heatButton.enabled;
     NSRect awakeFrame = NSMakeRect(heatUnavailable ? 24 : 204,158,heatUnavailable ? 352 : 172,44);

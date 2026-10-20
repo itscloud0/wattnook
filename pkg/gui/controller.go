@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -25,6 +26,7 @@ type menuController struct {
 	calibrationPhase        calibration.Phase
 	heatPaused              bool
 	topUpActive             bool
+	discharging             bool
 	temperatureCelsius      float64
 	capabilities            compatibility.Capabilities
 	nativeLimit             int
@@ -44,6 +46,11 @@ func (c *menuController) onWillOpen() {
 }
 
 func (c *menuController) onTimerTick() {
+	if !c.compatibilityKnown {
+		// Started while the daemon was restarting: retry instead of keeping
+		// the permissive fallback (which polls features this Mac lacks).
+		c.refreshOnOpen()
+	}
 	c.refreshDisableSchedules()
 	c.updateTelemetry()
 }
@@ -372,7 +379,11 @@ func (c *menuController) updateHeatProtection(conf config.Config, status *client
 
 func heatProtectionPresentation(enabled bool, status *client.HeatProtectionStatus) (string, string) {
 	if status.AdapterWarning != "" {
-		return "Heat Protection: " + status.AdapterWarning, "Adapter at 5 V · reconnect cable"
+		detail := "Charger not used · reconnect cable"
+		if strings.Contains(status.AdapterWarning, "5 V") {
+			detail = "Adapter at 5 V · reconnect cable"
+		}
+		return "Heat Protection: " + status.AdapterWarning, detail
 	}
 	if status.Fault || status.LastError != "" {
 		return "Heat Protection: stopped — " + status.LastError, "Stopped · see details"
@@ -533,6 +544,13 @@ func (c *menuController) updateChargeModes(status *client.HeatProtectionStatus) 
 	supported := c.capabilities.ChargeHold
 	c.menu.setHidden(itemTopUp, !supported)
 	c.menu.setHidden(itemSailing, !supported)
+	c.menu.setHidden(itemDischargeToLimit, !supported)
+	c.discharging = status.Discharging
+	if status.Discharging {
+		c.menu.setTitle(itemDischargeToLimit, "Stop Discharge")
+	} else {
+		c.menu.setTitle(itemDischargeToLimit, "Discharge to Limit")
+	}
 	c.topUpActive = status.TopUp
 	if status.TopUp {
 		c.menu.setTitle(itemTopUp, "Stop Top Up")
@@ -542,5 +560,5 @@ func (c *menuController) updateChargeModes(status *client.HeatProtectionStatus) 
 	c.menu.setChecked(itemSailingOff, status.SailingLevel == 0)
 	c.menu.setChecked(itemSailing5, status.SailingLevel == 5)
 	c.menu.setChecked(itemSailing10, status.SailingLevel == 10)
-	c.menu.setChargeModes(status.TopUp, status.Sailing, status.SailingLevel)
+	c.menu.setChargeModes(status.TopUp, status.Sailing, status.SailingLevel, status.Discharging)
 }
