@@ -294,7 +294,9 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 	}
 	if hot {
 		heldForHeat := h.forHeat && active
-		draining := sample.BatteryAmps < heatDrainingAmps
+		// Below the hold point means the adapter cannot cover the load; the
+		// fraction drained down to the hold point is expected.
+		draining := sample.BatteryAmps < heatDrainingAmps && sample.Percent < h.target
 		switch {
 		case heldForHeat && sample.Percent < heatHoldReserve && draining:
 			// The adapter cannot cover the load: let the battery recover.
@@ -389,13 +391,9 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 	target := sample.Percent
 	switch {
 	case hot:
-		// The displayed percentage is rounded down; holding exactly at it makes
-		// macOS drain the battery on AC for a minute to reach it. One point up
-		// settles by topping off a fraction instead, never above a custom limit.
-		target++
-		if ceiling := max(custom, sample.Percent); custom > 0 && target > ceiling {
-			target = ceiling
-		}
+		// Hold at the displayed (rounded-down) charge. macOS may let the
+		// battery give back the fraction above it, which cools it; a target one
+		// point up made it charge a whole percent at full power instead.
 	case drain:
 		// A target below the charge makes macOS run the Mac partly from the
 		// battery on AC until it reaches the target; the adapter stays on.

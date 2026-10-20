@@ -57,8 +57,8 @@ func newHoldFixture(sample heatHoldSample) (*nativeHeatHold, *holderFixture, *he
 func TestHeatHoldPausesAtCurrentPercentWhenHotOnAC(t *testing.T) {
 	h, holder, _ := newHoldFixture(heatHoldSample{Temperature: 36, Percent: 72, PluggedIn: true})
 	h.reconcile(true, 35, 32)
-	// One point above the rounded-down charge, so the hold never drains.
-	if len(holder.holds) != 1 || holder.holds[0] != 73 {
+	// At the displayed charge: never charge a hot battery up a percent.
+	if len(holder.holds) != 1 || holder.holds[0] != 72 {
 		t.Fatalf("holds=%v", holder.holds)
 	}
 	status := getHeatProtectionStatusUnchecked()
@@ -198,7 +198,7 @@ func TestNativeHeatProtectionAPIEnablesChargeHold(t *testing.T) {
 	}
 	s.Temperature = 36
 	maintainLoopForced()
-	if len(holder.holds) != 1 || holder.holds[0] != 73 {
+	if len(holder.holds) != 1 || holder.holds[0] != 72 {
 		t.Fatalf("loop did not hold: %v", holder.holds)
 	}
 	// While held, /limit reports the saved Apple limit.
@@ -286,7 +286,7 @@ func TestHeatAndCustomLimitShareOneHold(t *testing.T) {
 	// Heat pauses at the current charge: one retarget, still one snapshot.
 	s.Temperature = 36
 	h.reconcile(true, 35, 32)
-	if len(holder.holds) != 1 || len(holder.retargets) != 1 || holder.retargets[0] != 61 || !getHeatProtectionStatusUnchecked().Paused {
+	if len(holder.holds) != 1 || len(holder.retargets) != 1 || holder.retargets[0] != 60 || !getHeatProtectionStatusUnchecked().Paused {
 		t.Fatalf("heat retarget: holds=%v retargets=%v", holder.holds, holder.retargets)
 	}
 	// Cooling returns to the limit without releasing.
@@ -372,7 +372,7 @@ func TestHeatHoldPausesLowChargeButNotADrainingOne(t *testing.T) {
 	// A capable adapter: hold even at a low charge.
 	h, holder, s := newHoldFixture(heatHoldSample{Temperature: 40, Percent: 13, PluggedIn: true})
 	h.reconcile(true, 35, 32)
-	if len(holder.holds) != 1 || holder.holds[0] != 14 {
+	if len(holder.holds) != 1 || holder.holds[0] != 13 {
 		t.Fatalf("low but steady charge not held: %v", holder.holds)
 	}
 	// Held and steady at 13%: keep holding.
@@ -395,7 +395,7 @@ func TestHeatHoldPausesLowChargeButNotADrainingOne(t *testing.T) {
 	}
 	s.Percent = 30
 	h.reconcile(true, 35, 32)
-	if len(holder.holds) != 2 || holder.holds[1] != 31 {
+	if len(holder.holds) != 2 || holder.holds[1] != 30 {
 		t.Fatalf("not re-armed at 30%%: %v", holder.holds)
 	}
 	// Never start below the minimum.
