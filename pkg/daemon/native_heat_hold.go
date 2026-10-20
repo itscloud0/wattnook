@@ -40,6 +40,11 @@ type nativeHeatHold struct {
 	// pendingLimit is an Apple limit chosen while held (0 = none).
 	pendingLimit int
 	customLimit  func() int
+	// USB-PD contract check around adapter pulses.
+	contract       func() (adapterContract, error)
+	contractWait   time.Duration
+	sleep          func(time.Duration)
+	adapterWarning string
 	// Why the active hold exists and where it is.
 	forHeat  bool
 	forLimit int
@@ -119,6 +124,8 @@ func initializeHeatHold(configPath string) {
 		},
 		setLimit:    func(limit int) error { return nativeCharge.SetLimit(limit) },
 		customLimit: func() int { return conf.CustomChargeLimit() },
+		contract:    readAdapterContract,
+		sleep:       time.Sleep,
 	}
 }
 
@@ -127,7 +134,7 @@ func (h *nativeHeatHold) release() error {
 	if !h.holder.Active() {
 		return nil
 	}
-	if err := h.holder.Release(); err != nil {
+	if err := h.guardAdapterContract(h.holder.Release); err != nil {
 		h.fault = err.Error()
 		return err
 	}
@@ -159,6 +166,7 @@ func (h *nativeHeatHold) publish(status HeatProtectionStatus) {
 		status.Fault = true
 		status.LastError = h.fault
 	}
+	status.AdapterWarning = h.adapterWarning
 	heatProtectionMu.Lock()
 	heatProtectionStatus = status
 	heatProtectionMu.Unlock()
@@ -173,6 +181,7 @@ func (h *nativeHeatHold) publish(status HeatProtectionStatus) {
 func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 	status := HeatProtectionStatus{Enabled: enabled, PauseTemperatureCelsius: pause, ResumeTemperatureCelsius: resume}
 	defer func() { h.publish(status) }()
+	h.refreshAdapterWarning()
 	custom := 0
 	if h.customLimit != nil {
 		custom = h.customLimit()
@@ -278,11 +287,12 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 		h.forHeat, h.forLimit = hot, custom
 		return
 	}
-	if active {
-		err = h.holder.Retarget(target)
-	} else {
-		err = h.holder.Hold(target)
-	}
+	err = h.guardAdapterContract(func() error {
+		if active {
+			return h.holder.Retarget(target)
+		}
+		return h.holder.Hold(target)
+	})
 	if err != nil {
 		h.fault = err.Error()
 		logrus.WithError(err).Error("charge hold")

@@ -99,6 +99,7 @@ type HeatProtectionStatus struct {
 	Fault                    bool      `json:"fault"`
 	ReserveBlocked           bool      `json:"reserveBlocked"`
 	LastTransition           time.Time `json:"lastTransition,omitempty"`
+	AdapterWarning           string    `json:"adapterWarning,omitempty"`
 }
 
 func (c *Client) GetHeatProtection() (*HeatProtectionStatus, error) {

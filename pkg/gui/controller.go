@@ -368,6 +368,9 @@ func (c *menuController) updateHeatProtection(conf config.Config, status *client
 }
 
 func heatProtectionPresentation(enabled bool, status *client.HeatProtectionStatus) (string, string) {
+	if status.AdapterWarning != "" {
+		return "Heat Protection: " + status.AdapterWarning, "Adapter at 5 V · reconnect cable"
+	}
 	if status.Fault || status.LastError != "" {
 		return "Heat Protection: stopped — " + status.LastError, "Stopped · see details"
 	}

@@ -59,3 +59,11 @@ func TestAlertTextDropsTransportPrefix(t *testing.T) {
 		}
 	}
 }
+
+func TestAdapterWarningWinsPresentation(t *testing.T) {
+	status := client.HeatProtectionStatus{Mechanism: "charge-hold", Paused: true, AdapterWarning: "The power adapter dropped to 5 V"}
+	title, detail := heatProtectionPresentation(true, &status)
+	if !strings.Contains(title, "5 V") || !strings.Contains(detail, "reconnect") {
+		t.Fatalf("%q %q", title, detail)
+	}
+}
