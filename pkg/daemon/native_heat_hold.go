@@ -18,6 +18,8 @@ type heatHoldSample struct {
 	Temperature float64
 	Percent     int
 	PluggedIn   bool
+	// BatteryAmps is negative while the battery discharges.
+	BatteryAmps float64
 }
 
 type chargeHolder interface {
@@ -45,6 +47,8 @@ type nativeHeatHold struct {
 	contractWait   time.Duration
 	sleep          func(time.Duration)
 	adapterWarning string
+	// reserveLatched blocks heat holds after a reserve release until rearm.
+	reserveLatched bool
 	// Why the active hold exists and where it is.
 	forHeat  bool
 	forLimit int
@@ -56,12 +60,15 @@ type nativeHeatHold struct {
 
 var heatHold *nativeHeatHold
 
-// Heat Protection never holds a nearly empty battery: below heatHoldStart it
-// does not start a hold, and below heatHoldRelease it ends one, so a hot Mac
-// whose adapter cannot cover the load still charges instead of draining.
+// Heat Protection pauses charging at any charge from heatHoldMinimum, as
+// long as the adapter covers the Mac. If it cannot (the held battery is
+// discharging) and the charge falls below heatHoldReserve, the hold ends so
+// the battery can recover, and it re-arms only at heatHoldRearm.
 const (
-	heatHoldStart   = 30
-	heatHoldRelease = 25
+	heatHoldMinimum  = 10
+	heatHoldReserve  = 25
+	heatHoldRearm    = 30
+	heatDrainingAmps = -0.1
 )
 
 func heatHoldRecordPath(configPath string) string {
@@ -105,7 +112,8 @@ func readHeatHoldSample() (heatHoldSample, error) {
 	if err != nil {
 		return heatHoldSample{}, err
 	}
-	return heatHoldSample{Temperature: temperature, Percent: b.Battery.CurrentCharge, PluggedIn: b.State.IsConnected}, nil
+	return heatHoldSample{Temperature: temperature, Percent: b.Battery.CurrentCharge, PluggedIn: b.State.IsConnected,
+		BatteryAmps: b.Battery.Amperage}, nil
 }
 
 func initializeHeatHold(configPath string) {
@@ -219,13 +227,21 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 			hot = temperature >= pause
 		}
 	}
+	if sample.Percent >= heatHoldRearm {
+		h.reserveLatched = false
+	}
 	if hot {
-		floor := heatHoldStart
-		if h.forHeat && active {
-			floor = heatHoldRelease
-		}
-		if sample.Percent < floor {
+		heldForHeat := h.forHeat && active
+		draining := sample.BatteryAmps < heatDrainingAmps
+		switch {
+		case heldForHeat && sample.Percent < heatHoldReserve && draining:
+			// The adapter cannot cover the load: let the battery recover.
+			h.reserveLatched = true
 			hot = false
+		case !heldForHeat && (sample.Percent < heatHoldMinimum || h.reserveLatched):
+			hot = false
+		}
+		if !hot {
 			status.ReserveBlocked = true
 			status.Reason = "battery low; charging despite heat"
 		}

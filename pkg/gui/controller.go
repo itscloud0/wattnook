@@ -391,7 +391,7 @@ func heatProtectionPresentation(enabled bool, status *client.HeatProtectionStatu
 		if status.Mechanism == "adapter" {
 			return "Heat Protection: low battery — adapter restored; re-arms above 25%", "Low battery · AC restored"
 		}
-		return "Heat Protection: battery low — charging despite heat; pauses again above 30%", "Low battery · charging"
+		return "Heat Protection: adapter can't keep up and the battery is low — charging despite heat; pauses again at 30%", "Low battery · charging"
 	}
 	title := fmt.Sprintf("Heat Protection: on (%.0f°C → %.0f°C)", status.PauseTemperatureCelsius, status.ResumeTemperatureCelsius)
 	if status.Mechanism == "adapter" {

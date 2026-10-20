@@ -366,33 +366,40 @@ func TestCustomLimitHoldFollowsChargeDownOnlyOnAC(t *testing.T) {
 	}
 }
 
-func TestHeatHoldKeepsALowBatteryCharging(t *testing.T) {
-	h, holder, s := newHoldFixture(heatHoldSample{Temperature: 40, Percent: 29, PluggedIn: true})
+func TestHeatHoldPausesLowChargeButNotADrainingOne(t *testing.T) {
+	// A capable adapter: hold even at a low charge.
+	h, holder, s := newHoldFixture(heatHoldSample{Temperature: 40, Percent: 13, PluggedIn: true})
 	h.reconcile(true, 35, 32)
-	if len(holder.holds) != 0 || !getHeatProtectionStatusUnchecked().ReserveBlocked {
-		t.Fatalf("held below the start floor: %v", holder.holds)
+	if len(holder.holds) != 1 || holder.holds[0] != 13 {
+		t.Fatalf("low but steady charge not held: %v", holder.holds)
 	}
-	s.Percent = 40
-	h.reconcile(true, 35, 32)
-	if len(holder.holds) != 1 || holder.holds[0] != 40 {
-		t.Fatalf("hold above the floor: %v", holder.holds)
-	}
-	// Adapter cannot cover the load: the held battery drains. Keep holding
-	// down to the release floor, then let it charge despite the heat.
-	s.Percent = 26
+	// Held and steady at 13%: keep holding.
 	h.reconcile(true, 35, 32)
 	if holder.releases != 0 {
-		t.Fatal("released above the release floor")
+		t.Fatal("released a steady hold")
 	}
-	s.Percent = 24
+	// The adapter stops covering the load: the held battery drains below the
+	// reserve, so the hold ends and charging may resume.
+	s.Percent, s.BatteryAmps = 12, -1.2
 	h.reconcile(true, 35, 32)
-	if holder.releases != 1 || holder.active || getHeatProtectionStatusUnchecked().Paused {
-		t.Fatalf("still holding a low battery: releases=%d", holder.releases)
+	if holder.releases != 1 || holder.active || !getHeatProtectionStatusUnchecked().ReserveBlocked {
+		t.Fatalf("draining hold kept: releases=%d", holder.releases)
 	}
-	// It does not re-hold until the start floor is reached again.
-	s.Percent = 28
+	// No re-hold while latched, even with the drain gone.
+	s.Percent, s.BatteryAmps = 20, 2.0
 	h.reconcile(true, 35, 32)
 	if len(holder.holds) != 1 {
-		t.Fatalf("re-held below the start floor: %v", holder.holds)
+		t.Fatalf("re-held while latched: %v", holder.holds)
+	}
+	s.Percent = 30
+	h.reconcile(true, 35, 32)
+	if len(holder.holds) != 2 || holder.holds[1] != 30 {
+		t.Fatalf("not re-armed at 30%%: %v", holder.holds)
+	}
+	// Never start below the minimum.
+	h2, holder2, _ := newHoldFixture(heatHoldSample{Temperature: 40, Percent: 8, PluggedIn: true})
+	h2.reconcile(true, 35, 32)
+	if len(holder2.holds) != 0 {
+		t.Fatalf("held below the minimum: %v", holder2.holds)
 	}
 }
