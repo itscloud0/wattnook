@@ -283,7 +283,7 @@ int main(int argc, const char *argv[]) {
         assert(NSWidth(view.bounds) == 400 && NSHeight(view.bounds) == 390);
         assert(NSHeight(c.powerFlowView.frame) == 220);
         assert(NSEqualRects(c.powerFlowView.frame,NSMakeRect(0,214,400,220)));
-        assert(NSMaxY(FindButton(view,@"History ›").frame) + 6 <= 446);
+        assert(NSMaxY(FindButton(view,@"History").frame) + 6 <= 446);
         // Keyboard: ⌘2/⌘3/⌘1 switch tabs, ⌘, toggles Settings.
         NSEvent *(^command)(NSString *) = ^NSEvent *(NSString *key) {
             return [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:NSEventModifierFlagCommand
@@ -736,14 +736,14 @@ int main(int argc, const char *argv[]) {
         [FindButton(view,@"System") performClick:nil];
         NSTextField *pressure = [view valueForKey:@"_pressure"];
         assert(NSMaxY(pressure.frame) <= NSHeight(pressure.superview.bounds));
-        assert(!NSIntersectsRect(pressure.frame,FindButton(view,@"History ›").frame));
+        assert(!NSIntersectsRect(pressure.frame,FindButton(view,@"History").frame));
         // Illustrative graph fixture covers all four series and a missing sample.
         c.metricHistory = [[[WattMetricHistory alloc] init] autorelease];
         NSTimeInterval historyNow = NSDate.timeIntervalSinceReferenceDate;
         for (NSInteger i=0;i<90;i++)
             [c.metricHistory append:(WattMetricSample){historyNow-890+i*10,
                 30+20*sin(i/8.0),65+8*sin(i/17.0),i == 50 ? NAN : 20+12*sin(i/10.0),15+10*cos(i/7.0)}];
-        [FindButton(view,@"History ›") performClick:nil];
+        [FindButton(view,@"History") performClick:nil];
         assert(!c.systemPageVisible && !((NSView *)[view valueForKey:@"_historyPage"]).hidden);
         // Cover real graph drawing without generating screenshots.
         [[view valueForKey:@"_historyChart"] display];

@@ -84,11 +84,13 @@ static const CGFloat WattBatteryPopoverHeight = 532 - 142;
         _grouped && !_selected ? NSColor.secondaryLabelColor :
         quietOn ? WattAccentColor() : NSColor.labelColor;
     CGFloat iconWidth = self.image ? 17 : (_swatch ? 10 : 0);
+    // Small text actions keep the icon close to its word.
+    CGFloat iconGap = _plain ? 6 : 10;
     NSDictionary *style = @{NSFontAttributeName:self.font,
         NSForegroundColorAttributeName:ink};
     NSSize textSize = [self.title sizeWithAttributes:style];
     CGFloat start = (NSWidth(self.bounds) - textSize.width -
-        (iconWidth > 0 && self.title.length > 0 ? iconWidth + 10 : iconWidth)) / 2;
+        (iconWidth > 0 && self.title.length > 0 ? iconWidth + iconGap : iconWidth)) / 2;
     if (self.image) {
         NSSize intrinsic = self.image.size;
         CGFloat scale = MIN(17 / MAX(1, intrinsic.width), 19 / MAX(1, intrinsic.height));
@@ -104,7 +106,7 @@ static const CGFloat WattBatteryPopoverHeight = 532 - 142;
         [tinted drawInRect:icon fromRect:NSZeroRect
             operation:NSCompositingOperationSourceOver fraction:self.enabled ? 1 : 0.4
             respectFlipped:YES hints:nil];
-        start += iconWidth + (self.title.length ? 10 : 0);
+        start += iconWidth + (self.title.length ? iconGap : 0);
     } else if (_swatch) {
         // A palette pill shows its color, not just its name.
         NSRect dot = NSMakeRect(start, (NSHeight(self.bounds)-10)/2, 10, 10);
@@ -184,6 +186,22 @@ NSString *WattCompactBytes(double bytes, BOOL binary) {
 @implementation WattLimitLabel
 - (NSView *)hitTest:(NSPoint)point { (void)point; return nil; }
 @end
+// Figures in ink, their words and units in secondary grey ("0.9% CPU",
+// "1.2 GB", "Read 3 MB/s"): the eye lands on the number.
+static NSAttributedString *WattFigureWithQuietUnits(NSString *text, NSFont *font) {
+    NSMutableParagraphStyle *style = [[[NSMutableParagraphStyle alloc] init] autorelease];
+    style.alignment = NSTextAlignmentRight;
+    style.lineBreakMode = NSLineBreakByTruncatingTail;
+    NSMutableAttributedString *out = [[[NSMutableAttributedString alloc] initWithString:text
+        attributes:@{NSFontAttributeName: font, NSForegroundColorAttributeName: NSColor.secondaryLabelColor,
+                     NSParagraphStyleAttributeName: style}] autorelease];
+    static NSRegularExpression *figure;
+    if (!figure) figure = [[NSRegularExpression alloc] initWithPattern:@"[0-9][0-9.,]*%?" options:0 error:NULL];
+    for (NSTextCheckingResult *match in [figure matchesInString:text options:0 range:NSMakeRange(0, text.length)])
+        [out addAttribute:NSForegroundColorAttributeName value:NSColor.labelColor range:match.range];
+    return out;
+}
+
 @implementation WattAppRow {
     NSTrackingArea *_rowTracking;
     NSImageView *_icon;
@@ -259,6 +277,8 @@ NSString *WattCompactBytes(double bytes, BOOL binary) {
     NSRect amountFrame = _amount.frame;
     amountFrame.origin.y = metric == 0 ? 9.5 : 17;
     _amount.frame = amountFrame;
+    if (_amount.stringValue.length)
+        _amount.attributedStringValue = WattFigureWithQuietUnits(_amount.stringValue, _amount.font);
     _amount.toolTip = metric == 2 ? @"Read/write throughput; includes helpers, all volumes. Not disk utilization percent." :
         metric == 1 ? @"Resident memory, including helper processes" :
         @"Percentage of total CPU capacity, on the same scale as CPU load; helpers included";
@@ -473,7 +493,7 @@ static void Redisplay(NSView *view) {
     _swap = Label(_systemPage, NSMakeRect(146,334,108,20), @"Swap —", 12, NO);
     _pressure = Label(_systemPage,NSMakeRect(24,419,260,18),@"Memory pressure: —",11,NO);
     _pressure.toolTip = @"macOS memory pressure, separate from the percentage of RAM used";
-    WattButton *history = Button(_systemPage,NSMakeRect(307,415,80,25),@"History ›",@"",self,@selector(history:));
+    WattButton *history = Button(_systemPage,NSMakeRect(307,415,80,25),@"History",@"chart.xyaxis.line",self,@selector(history:));
     history.plain = YES;
     _swap.toolTip = @"Current system swap used, not swap-file capacity or RAM usage";
     _processCount = Label(_systemPage, NSMakeRect(24,334,108,20), @"", 12, NO);
@@ -499,7 +519,7 @@ static void Redisplay(NSView *view) {
     }
     _empty = Label(_systemPage, NSMakeRect(24, 181, 352, 32), @"Collecting app samples…", 12, NO);
     WattButton *activity = Button(_systemPage, NSMakeRect(24, 14, 352, 28),
-        @"Open Activity Monitor ↗", @"waveform.path.ecg", self, @selector(activity:)); activity.plain = YES;
+        @"Open Activity Monitor", @"waveform.path.ecg", self, @selector(activity:)); activity.plain = YES;
     _footer = Label(_systemPage, NSMakeRect(24, 4, 352, 16), @"", 10, NO);
     _footer.alignment = NSTextAlignmentCenter;
     WattButton *back = Button(_historyPage,NSMakeRect(14,408,100,30),@"System",@"chevron.left",self,@selector(system:)); back.plain = YES;

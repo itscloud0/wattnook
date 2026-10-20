@@ -441,7 +441,8 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     }
     // The controller's non-interactive label never intercepts marker dragging.
     [[NSColor colorWithCalibratedWhite:dark ? 0.28 : 0.80 alpha:1] setFill];
-    NSRectFill(NSMakeRect(14, 104, width - 28, 0.7));
+    // Same 20 pt inset as the rail and the flow nodes.
+    NSRectFill(NSMakeRect(20, 104, width - 40, 0.7));
 
     if (!self.hasTelemetry) {
         [self updateAnimationMask:[NSBezierPath bezierPath]];
