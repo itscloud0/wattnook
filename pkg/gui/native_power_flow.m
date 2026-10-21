@@ -161,7 +161,7 @@ static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRe
 
 - (NSRect)railRect {
     // 32 pt: the content edge inside the 16 pt tiles, on the 8 pt grid.
-    return NSMakeRect(32, 151, NSWidth(self.bounds) - 64, 6);
+    return NSMakeRect(32, 163, NSWidth(self.bounds) - 64, 6);
 }
 
 - (CGFloat)markerX {
@@ -340,9 +340,9 @@ static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRe
     [chargeLine appendAttributedString:[[[NSAttributedString alloc] initWithString:@"%"
         attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:26 weight:NSFontWeightLight],
                      NSForegroundColorAttributeName:NSColor.secondaryLabelColor}] autorelease]];
-    [chargeLine drawAtPoint:NSMakePoint(29, 212 - chargeLine.size.height / 2)];
+    [chargeLine drawAtPoint:NSMakePoint(29, 224 - chargeLine.size.height / 2)];
     // Orange marks the heat pause on the state line only; green marks charging.
-    Text(state, NSMakeRect(32, 162, 230, 18), 13, NSFontWeightRegular,
+    Text(state, NSMakeRect(32, 174, 230, 18), 13, NSFontWeightRegular,
          self.heatPaused && self.pluggedIn ? WattWarningColor() :
          (statusCharging ? NSColor.systemGreenColor : NSColor.secondaryLabelColor),
          NSTextAlignmentLeft);
@@ -354,7 +354,7 @@ static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRe
     BOOL showCPU = self.processorTemperatureCelsius > 0;
     BOOL showHealth = self.healthPercent > 0;
     NSInteger lines = (self.temperatureCelsius > 0) + showCPU + showHealth;
-    CGFloat lineY = lines >= 3 ? 224 : (lines == 2 ? 214 : 204);
+    CGFloat lineY = lines >= 3 ? 236 : (lines == 2 ? 226 : 216);
     if (self.temperatureCelsius > 0) {
         TemperatureLine(@"Battery", self.temperatureCelsius, NSColor.labelColor,
             NSMakeRect(right - 146, lineY, 146, 20), headerMuted);
@@ -410,13 +410,13 @@ static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRe
         }
     } else if (limit >= 0) {
         [NSColor.labelColor setFill];
-        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(markerX - 1.5, 146, 3, 16) xRadius:2 yRadius:2] fill];
+        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(markerX - 1.5, 158, 3, 16) xRadius:2 yRadius:2] fill];
     }
     // The controller's non-interactive label never intercepts marker dragging.
 
     if (!self.hasTelemetry) {
         [self updateAnimationMask:[NSBezierPath bezierPath]];
-        Text(@"Power flow unavailable", NSMakeRect(20, 23, width - 40, 40),
+        Text(@"Power flow unavailable", NSMakeRect(20, 42, width - 40, 40),
              12, NSFontWeightMedium, NSColor.secondaryLabelColor, NSTextAlignmentCenter);
         return;
     }
@@ -426,90 +426,97 @@ static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRe
     if (charging && (!self.pluggedIn || self.adapterWatts < self.batteryWatts + 0.5 ||
                      self.systemWatts < 0.5)) {
         [self updateAnimationMask:[NSBezierPath bezierPath]];
-        Text(@"Power readings updating", NSMakeRect(20, 52, width - 40, 20),
+        Text(@"Power readings updating", NSMakeRect(20, 64, width - 40, 20),
              12, NSFontWeightMedium, NSColor.labelColor, NSTextAlignmentCenter);
-        Text(@"Adapter and battery data disagree", NSMakeRect(20, 30, width - 40, 18),
+        Text(@"Adapter and battery data disagree", NSMakeRect(20, 42, width - 40, 18),
              10, NSFontWeightRegular, NSColor.secondaryLabelColor, NSTextAlignmentCenter);
         return;
     }
 
-    // Where the power goes, as macOS shows where storage goes: one figure with
-    // its source, one split bar, a legend of coloured dots. No icons.
+    // AlDente-style flow: full-height source and destination blocks, bands as
+    // thick as their share of the watts, the numbers inside the bands. One
+    // icon family (SF Symbols, one size, white); colour only on the bands.
     (void)dark;
     BOOL fromBattery = !adapter;
-    // One icon family throughout: SF Symbols, one size and weight, each tinted
-    // with its segment's colour.
     NSInteger level = self.chargePercent < 0 ? 100 : self.chargePercent;
     NSString *battery = level >= 88 ? @"battery.100percent" : level >= 63 ? @"battery.75percent" :
         level >= 38 ? @"battery.50percent" : level >= 13 ? @"battery.25percent" : @"battery.0percent";
-    NSString *plug = [NSImage imageWithSystemSymbolName:@"powerplug.portrait.fill" accessibilityDescription:nil] ?
-        @"powerplug.portrait.fill" : @"powerplug.fill";
-    double input = hybrid ? self.adapterWatts - self.batteryWatts :
-        (fromBattery ? -self.batteryWatts : self.adapterWatts);
-    NSString *source = hybrid ? @"from the adapter and battery" :
-        (fromBattery ? @"from the battery" : @"from the adapter");
-    NSMutableAttributedString *headline = [[[NSMutableAttributedString alloc]
-        initWithString:input > 0.25 ? [NSString stringWithFormat:@"%.1f W", input] : @"—"
-            attributes:@{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:24 weight:NSFontWeightSemibold],
-                         NSForegroundColorAttributeName:NSColor.labelColor}] autorelease];
-    [headline appendAttributedString:[[[NSAttributedString alloc] initWithString:[@"  " stringByAppendingString:source]
-        attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:13 weight:NSFontWeightRegular],
-                     NSForegroundColorAttributeName:NSColor.secondaryLabelColor}] autorelease]];
-    Symbol(hybrid || !fromBattery ? plug : battery, NSMakeRect(32, 74, 22, 24), 17, NSColor.labelColor);
-    [headline drawAtPoint:NSMakePoint(62, 86 - headline.size.height / 2)];
-
-    // Segments: what the input feeds (charging: Mac + battery) or what feeds
-    // the Mac (hybrid: adapter + battery). Each carries its legend entry.
-    NSMutableArray *segments = [NSMutableArray array];
-    void (^segment)(NSString *, NSString *, double, NSColor *) = ^(NSString *name, NSString *icon, double watts, NSColor *color) {
-        if (watts > 0.05) [segments addObject:@[name, @(watts), color, icon]];
-    };
-    if (adapter && charging) {
-        segment(@"Mac", @"laptopcomputer", self.systemWatts, WattAccentColor());
-        segment(@"Battery", battery, self.batteryWatts, NSColor.systemGreenColor);
-    } else if (hybrid) {
-        segment(@"Adapter", plug, self.adapterWatts, WattAccentColor());
-        segment(@"Battery", battery, -self.batteryWatts, NSColor.systemOrangeColor);
-    } else {
-        segment(@"Mac", @"laptopcomputer", input, WattAccentColor());
-    }
-    double total = 0;
-    for (NSArray *item in segments) total += [item[1] doubleValue];
-    NSRect bar = NSMakeRect(32, 44, width - 64, 10);
-    NSBezierPath *track = [NSBezierPath bezierPathWithRoundedRect:bar xRadius:5 yRadius:5];
-    [[NSColor.whiteColor colorWithAlphaComponent:0.10] setFill]; [track fill];
+    const CGFloat top = 124, nodeW = 64, gap = 4, split = 6;
+    CGFloat leftX = 16, rightX = width - 16 - nodeW, bandL = leftX + nodeW + gap, bandR = rightX - gap;
+    NSColor *nodeColor = WattTileColor(NO);
     NSBezierPath *mask = [NSBezierPath bezierPath];
-    if (total > 0.05) {
-        [NSGraphicsContext saveGraphicsState];
-        [track addClip];
-        CGFloat x = NSMinX(bar);
-        for (NSUInteger i = 0; i < segments.count; i++) {
-            CGFloat w = NSWidth(bar) * [segments[i][1] doubleValue] / total;
-            [(NSColor *)segments[i][2] setFill];
-            // A 2 pt gap separates segments, like the storage bar.
-            NSRectFill(NSMakeRect(x, NSMinY(bar), MAX(1, w - (i + 1 < segments.count ? 2 : 0)), NSHeight(bar)));
-            x += w;
+    // A Sankey band from a left y-range to a right y-range.
+    NSBezierPath *(^band)(CGFloat, CGFloat, CGFloat, CGFloat) = ^(CGFloat l0, CGFloat l1, CGFloat r0, CGFloat r1) {
+        NSBezierPath *path = [NSBezierPath bezierPath];
+        CGFloat k = (bandR - bandL) * 0.45;
+        [path moveToPoint:NSMakePoint(bandL, l1)];
+        [path curveToPoint:NSMakePoint(bandR, r1) controlPoint1:NSMakePoint(bandL + k, l1) controlPoint2:NSMakePoint(bandR - k, r1)];
+        [path lineToPoint:NSMakePoint(bandR, r0)];
+        [path curveToPoint:NSMakePoint(bandL, l0) controlPoint1:NSMakePoint(bandR - k, r0) controlPoint2:NSMakePoint(bandL + k, l0)];
+        [path closePath];
+        return path;
+    };
+    void (^node)(NSRect, NSString *, NSString *) = ^(NSRect rect, NSString *icon, NSString *value) {
+        [nodeColor setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:rect xRadius:12 yRadius:12] fill];
+        CGFloat iconY = value ? NSMidY(rect) + 2 : NSMidY(rect) - 11;
+        Symbol(icon, NSMakeRect(NSMidX(rect) - 14, iconY, 28, 22), 18, NSColor.labelColor);
+        if (value) Text(value, NSMakeRect(NSMinX(rect), NSMidY(rect) - 20, NSWidth(rect), 18), 13,
+                        NSFontWeightMedium, NSColor.labelColor, NSTextAlignmentCenter);
+    };
+    void (^label)(double, CGFloat, CGFloat) = ^(double watts, CGFloat y0, CGFloat y1) {
+        if (y1 - y0 < 16) return;
+        Text([NSString stringWithFormat:@"%.1f W", watts], NSMakeRect(bandL, (y0 + y1) / 2 - 9, bandR - bandL, 18),
+             14, NSFontWeightSemibold, NSColor.labelColor, NSTextAlignmentCenter);
+    };
+    NSString *(^watts)(double) = ^NSString *(double w) { return [NSString stringWithFormat:@"%.0f W", MAX(0, w)]; };
+    if ((adapter && charging) || hybrid) {
+        // One side is a single block, the other two blocks split by share.
+        double a = adapter && charging ? self.batteryWatts : self.adapterWatts;   // upper stream
+        double b = adapter && charging ? self.systemWatts : -self.batteryWatts;   // lower stream
+        double sum = MAX(0.1, a + b);
+        CGFloat usable = top - split, upper = MAX(36, MIN(usable - 36, usable * a / sum));
+        NSRect upperNode = NSMakeRect(0, top - upper, nodeW, upper), lowerNode = NSMakeRect(0, 0, nodeW, usable - upper);
+        CGFloat seam = top * b / sum; // where the streams meet on the single side
+        NSColor *upperColor = adapter && charging ? NSColor.systemGreenColor : WattAccentColor();
+        NSColor *lowerColor = adapter && charging ? WattAccentColor() : NSColor.systemOrangeColor;
+        NSBezierPath *upperBand, *lowerBand;
+        if (adapter && charging) {
+            upperNode.origin.x = lowerNode.origin.x = rightX;
+            upperBand = band(seam, top, NSMinY(upperNode), NSMaxY(upperNode));
+            lowerBand = band(0, seam, NSMinY(lowerNode), NSMaxY(lowerNode));
+            node(NSMakeRect(leftX, 0, nodeW, top), @"bolt.fill", watts(self.adapterWatts));
+            node(upperNode, battery, nil);
+            node(lowerNode, @"laptopcomputer", nil);
+        } else {
+            upperNode.origin.x = lowerNode.origin.x = leftX;
+            upperBand = band(NSMinY(upperNode), NSMaxY(upperNode), seam, top);
+            lowerBand = band(NSMinY(lowerNode), NSMaxY(lowerNode), 0, seam);
+            node(upperNode, @"bolt.fill", nil);
+            node(lowerNode, battery, nil);
+            node(NSMakeRect(rightX, 0, nodeW, top), @"laptopcomputer", watts(self.systemWatts));
         }
-        [NSGraphicsContext restoreGraphicsState];
-        [mask appendBezierPath:track];
-    }
-    CGFloat lx = 32;
-    for (NSArray *item in segments) {
-        Symbol(item[3], NSMakeRect(lx, 14, 18, 16), 12, (NSColor *)item[2]);
-        NSMutableAttributedString *entry = [[[NSMutableAttributedString alloc] initWithString:[item[0] stringByAppendingString:@"  "]
-            attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:12 weight:NSFontWeightRegular],
-                         NSForegroundColorAttributeName:NSColor.secondaryLabelColor}] autorelease];
-        [entry appendAttributedString:[[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%.1f W", [item[1] doubleValue]]
-            attributes:@{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium],
-                         NSForegroundColorAttributeName:NSColor.labelColor}] autorelease]];
-        [entry drawAtPoint:NSMakePoint(lx + 24, 22 - entry.size.height / 2)];
-        lx += 24 + entry.size.width + 20;
-    }
-    if (adapter && !charging && !hybrid) {
-        NSDictionary *idle = @{NSFontAttributeName:[NSFont systemFontOfSize:12 weight:NSFontWeightRegular],
-                               NSForegroundColorAttributeName:NSColor.secondaryLabelColor};
-        NSSize size = [@"Battery idle" sizeWithAttributes:idle];
-        [@"Battery idle" drawAtPoint:NSMakePoint(width - 32 - size.width, 22 - size.height / 2) withAttributes:idle];
+        // Calm bands: green into the battery, orange out of it, a quiet tint of
+        // the palette for the adapter powering the Mac.
+        [[upperColor colorWithAlphaComponent:upperColor == NSColor.systemGreenColor ? 0.38 : 0.30] setFill]; [upperBand fill];
+        [[lowerColor colorWithAlphaComponent:lowerColor == NSColor.systemOrangeColor ? 0.38 : 0.30] setFill]; [lowerBand fill];
+        [mask appendBezierPath:upperBand]; [mask appendBezierPath:lowerBand];
+        label(a, adapter && charging ? NSMinY(upperNode) : NSMinY(upperNode), NSMaxY(upperNode));
+        label(b, NSMinY(lowerNode), NSMaxY(lowerNode));
+    } else {
+        double w = fromBattery ? -self.batteryWatts : self.adapterWatts;
+        node(NSMakeRect(leftX, 0, nodeW, top), fromBattery ? battery : @"bolt.fill", nil);
+        node(NSMakeRect(rightX, 0, nodeW, top), @"laptopcomputer", nil);
+        NSBezierPath *only = band(0, top, 0, top);
+        // One source is the normal case either way; orange is kept for the
+        // battery helping an adapter that can't keep up.
+        [[WattAccentColor() colorWithAlphaComponent:w > 0.25 ? 0.30 : 0.12] setFill]; [only fill];
+        if (w > 0.25) [mask appendBezierPath:only];
+        Text(w > 0.25 ? [NSString stringWithFormat:@"%.1f W", w] : @"Waiting for a reading",
+             NSMakeRect(bandL, top / 2 + 2, bandR - bandL, 20), 15, NSFontWeightSemibold, NSColor.labelColor, NSTextAlignmentCenter);
+        if (adapter && !charging)
+            Text(@"Battery idle", NSMakeRect(bandL, top / 2 - 20, bandR - bandL, 16), 11,
+                 NSFontWeightMedium, NSColor.secondaryLabelColor, NSTextAlignmentCenter);
     }
     [self updateAnimationMask:mask];
 }

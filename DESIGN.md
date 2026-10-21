@@ -101,11 +101,11 @@ None beyond the ground and one group step. No hairlines, no shadows except the l
 
 The forecast's hourly row, for power: 90 bars, one per 10 s of Mac draw (15 minutes), oldest on the left. Bar colour says what the battery did: green charging, amber heat pause, white held or on battery. Empty slots are a faint baseline, never invented bars. Header: "Mac power · last 15 min" and "avg · peak". Samples come from the same AppleSmartBattery snapshot as the flow and are skipped while readings disagree.
 
-### Power group
+### Power flow
 
-Where the power goes, the way macOS shows where storage goes: the input figure (24 pt semibold) with its source in words ("from the adapter", "from the battery", "from the adapter and battery") and its source icon; one 10 pt split bar with 2 pt gaps between segments; a legend underneath. Charging splits the adapter's input into Mac (accent) and Battery (green); a hybrid load splits the Mac's draw into Adapter (accent) and Battery (orange); otherwise one segment. "Battery idle" sits at the legend's right when the adapter powers the Mac and the battery is held. The travelling highlight runs inside the bar only.
+AlDente-style Sankey across the full 368 pt width and 124 pt height, no group behind it: full-height rounded blocks (64 pt, 12 pt corners, the group grey) for the single side, two blocks split by share (6 pt apart, 36 pt minimum) for the other, bands as thick as their share of the watts with the watts inside (14 pt semibold). Charging: adapter block with its total, bands to Battery (green, 38%) and Mac (palette accent, 30%). Adapter can't keep up: Adapter (accent) and Battery (orange, 38%) bands into the Mac block with its total. One source: a single accent band with its watts and "Battery idle" when the battery is held. The travelling highlight runs inside the bands only.
 
-Icons are one family: SF Symbols at one size and weight (plug, Mac, a battery at the real charge level), each tinted with its segment's colour. No raster artwork, no chips behind icons.
+Icons are one family: SF Symbols at 18 pt, white (bolt, a battery at the real charge level, laptop). No raster artwork, no chips beyond the blocks themselves.
 
 ### Charge action
 

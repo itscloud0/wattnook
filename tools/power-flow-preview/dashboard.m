@@ -281,8 +281,8 @@ int main(int argc, const char *argv[]) {
         NSView *view = c.popover.contentViewController.view;
         // The approved full redesign gives both destinations equal, usable lanes.
         assert(NSWidth(view.bounds) == 400 && NSHeight(view.bounds) == 502);
-        assert(NSHeight(c.powerFlowView.frame) == 252);
-        assert(NSEqualRects(c.powerFlowView.frame,NSMakeRect(0,198,400,252)));
+        assert(NSHeight(c.powerFlowView.frame) == 264);
+        assert(NSEqualRects(c.powerFlowView.frame,NSMakeRect(0,186,400,264)));
         assert(NSMaxY(FindButton(view,@"History").frame) + 6 <= 446);
         // Keyboard: ⌘2/⌘3/⌘1 switch tabs, ⌘, toggles Settings.
         NSEvent *(^command)(NSString *) = ^NSEvent *(NSString *key) {
@@ -713,9 +713,9 @@ int main(int argc, const char *argv[]) {
                     assert(fabs(pulse.duration - 3.2) < 0.001);
                     CGPathRef outline = ((CAShapeLayer *)layer.mask).path;
                     CGFloat center = NSMidX(c.powerFlowView.bounds);
-                    // The highlight runs inside the split power bar (y 44-54) and nowhere else.
-                    assert(CGPathContainsPoint(outline, NULL, CGPointMake(center, 49), NO));
-                    assert(!CGPathContainsPoint(outline, NULL, CGPointMake(center, 80), NO));
+                    // The highlight runs inside the bands and never over the end blocks.
+                    assert(CGPathContainsPoint(outline, NULL, CGPointMake(center, 62), NO));
+                    assert(!CGPathContainsPoint(outline, NULL, CGPointMake(40, 62), NO));
                 }
                 if (merge) break;
             }

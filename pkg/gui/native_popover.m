@@ -472,12 +472,12 @@ static void Redisplay(NSView *view) {
     // Hero numeral and limit rail on the ground, then a Power
     // tile holding the flow, the 15-minute strip tile, and the two action tiles.
     // 8 pt grid: tiles at 16, content at 32, 8 between tiles, 12 inside.
-    Card(_batteryPage, NSMakeRect(16, 186, 368, 124));
+    // The power flow draws its own blocks; no group behind it.
     Card(_batteryPage, NSMakeRect(16, 110, 368, 68));
     WattPowerStripView *strip = [[[WattPowerStripView alloc] initWithFrame:NSMakeRect(32, 122, 336, 44)] autorelease];
     strip.source = c.powerFlowView; c.powerFlowView.stripView = strip;
     [_batteryPage addSubview:strip];
-    c.powerFlowView.frame = NSMakeRect(0, 198, 400, 252);
+    c.powerFlowView.frame = NSMakeRect(0, 186, 400, 264);
     c.powerFlowView.limitTarget = c; c.powerFlowView.limitAction = @selector(commitLimitFromRail:);
     [_batteryPage addSubview:c.powerFlowView];
     _limitLabel = [[[WattLimitLabel alloc] initWithFrame:NSMakeRect(32,318,230,18)] autorelease];
