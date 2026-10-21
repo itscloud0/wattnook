@@ -41,22 +41,22 @@ static NSString *StorageSize(NSDictionary *observation) {
  _owner=owner;
  self.listView=[[[NSView alloc]initWithFrame:self.bounds]autorelease];[self addSubview:_listView];
  // Same tab treatment as System's CPU / Memory / Disk sort.
- self.applicationsTab=StorageButton(_listView,NSMakeRect(24,408,172,30),@"Applications",self,@selector(selectCategory:));
- self.cachesTab=StorageButton(_listView,NSMakeRect(204,408,172,30),@"App caches",self,@selector(selectCategory:));
+ self.applicationsTab=StorageButton(_listView,NSMakeRect(16,408,180,30),@"Applications",self,@selector(selectCategory:));
+ self.cachesTab=StorageButton(_listView,NSMakeRect(204,408,180,30),@"App caches",self,@selector(selectCategory:));
  WattSetButtonGrouped(_applicationsTab,YES);WattSetButtonGrouped(_cachesTab,YES);
  WattSetButtonSelected(_applicationsTab,YES);
- self.searchField=[[[NSSearchField alloc]initWithFrame:NSMakeRect(24,368,264,28)]autorelease];
+ self.searchField=[[[NSSearchField alloc]initWithFrame:NSMakeRect(16,368,276,28)]autorelease];
  _searchField.placeholderString=@"Search applications";_searchField.delegate=self;
  [_searchField setAccessibilityLabel:@"Search applications"];[_listView addSubview:_searchField];
- self.scanButton=StorageButton(_listView,NSMakeRect(296,367,80,30),@"Scan",self,@selector(scan:));
+ self.scanButton=StorageButton(_listView,NSMakeRect(300,367,84,30),@"Scan",self,@selector(scan:));
  [_scanButton setAccessibilityIdentifier:@"storage.scan"];
- self.statusLabel=StorageLabel(_listView,NSMakeRect(24,336,352,22),@"Scan when you need a storage overview.",12,NO);
+ self.statusLabel=StorageLabel(_listView,NSMakeRect(32,336,336,22),@"Scan when you need a storage overview.",12,NO);
  _statusLabel.maximumNumberOfLines=1;_statusLabel.lineBreakMode=NSLineBreakByTruncatingTail;
  // The list sits on one translucent tile, like the other pages on the sky.
- NSView *tile=[[[NSView alloc]initWithFrame:NSMakeRect(12,8,376,324)]autorelease];
+ NSView *tile=[[[NSView alloc]initWithFrame:NSMakeRect(16,8,368,322)]autorelease];
  tile.wantsLayer=YES;tile.layer.backgroundColor=WattTileColor(NO).CGColor;tile.layer.cornerRadius=14;
  [_listView addSubview:tile];
- NSScrollView *scroll=[[[NSScrollView alloc]initWithFrame:NSMakeRect(24,16,352,314)]autorelease];
+ NSScrollView *scroll=[[[NSScrollView alloc]initWithFrame:NSMakeRect(24,16,352,306)]autorelease];
  scroll.hasVerticalScroller=YES;scroll.autohidesScrollers=YES;scroll.drawsBackground=NO;scroll.borderType=NSNoBorder;
  self.table=[[[NSTableView alloc]initWithFrame:NSMakeRect(0,0,352,314)]autorelease];
  _table.delegate=self;_table.dataSource=self;_table.rowHeight=44;_table.headerView=nil;

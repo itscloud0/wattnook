@@ -39,12 +39,19 @@ static void Symbol(NSString *name, NSRect rect, CGFloat size, NSColor *color) {
             operation:NSCompositingOperationSourceOver fraction:1];
 }
 
+// Endpoints are the things themselves, not glyphs in grey chips: this Mac's
+// own artwork, a battery showing its real level, a white plug.
 static void FlowNode(NSString *symbol, NSRect rect, NSColor *symbolColor, BOOL dark) {
-    NSColor *surface = dark ? [NSColor.whiteColor colorWithAlphaComponent:0.10] :
-        [NSColor.blackColor colorWithAlphaComponent:0.07];
-    [surface setFill];
-    [[NSBezierPath bezierPathWithRoundedRect:rect xRadius:8 yRadius:8] fill];
-    Symbol(symbol, NSInsetRect(rect, 7, 7), 19, symbolColor);
+    (void)symbolColor; (void)dark;
+    if ([symbol isEqual:@"laptopcomputer"]) {
+        NSImage *mac = [NSImage imageNamed:NSImageNameComputer];
+        if (mac) {
+            [mac drawInRect:NSInsetRect(rect, -4, -4) fromRect:NSZeroRect
+                  operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
+            return;
+        }
+    }
+    Symbol(symbol, NSInsetRect(rect, 2, 2), 26, NSColor.whiteColor);
 }
 
 static NSColor *FlowColor(void) {
@@ -261,7 +268,8 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
 }
 
 - (NSRect)railRect {
-    return NSMakeRect(20, 131, NSWidth(self.bounds) - 40, 6);
+    // 32 pt: the content edge inside the 16 pt tiles, on the 8 pt grid.
+    return NSMakeRect(32, 151, NSWidth(self.bounds) - 64, 6);
 }
 
 - (CGFloat)markerX {
@@ -401,7 +409,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
 - (void)drawRect:(NSRect)dirtyRect {
     (void)dirtyRect;
     CGFloat width = NSWidth(self.bounds);
-    CGFloat right = width - 20;
+    CGFloat right = width - 32;
     BOOL dark = [[self.effectiveAppearance bestMatchFromAppearancesWithNames:
         @[NSAppearanceNameDarkAqua, NSAppearanceNameAqua]] isEqualToString:NSAppearanceNameDarkAqua];
     NSInteger charge = MAX(0, MIN(100, self.chargePercent));
@@ -431,11 +439,11 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
         [NSString stringWithFormat:@"%ld%%", (long)charge];
 
     // A forecast's temperature: one light numeral, far larger than anything else.
-    Text(chargeText, NSMakeRect(20, 152, 240, 80), 66, NSFontWeightLight,
+    Text(chargeText, NSMakeRect(29, 172, 240, 80), 66, NSFontWeightLight,
          NSColor.labelColor, NSTextAlignmentLeft);
     // Orange marks the heat pause on the state line only; temperatures stay
     // neutral unless the CPU itself runs hot.
-    Text(state, NSMakeRect(24, 142, 250, 18), 13, NSFontWeightRegular,
+    Text(state, NSMakeRect(32, 162, 230, 18), 13, NSFontWeightRegular,
          // The sunset sky already says "heat"; the line stays white to read on it.
          self.heatPaused && self.pluggedIn ? NSColor.labelColor : NSColor.secondaryLabelColor,
          NSTextAlignmentLeft);
@@ -447,22 +455,22 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     BOOL showCPU = self.processorTemperatureCelsius > 0;
     BOOL showHealth = self.healthPercent > 0;
     NSInteger lines = (self.temperatureCelsius > 0) + showCPU + showHealth;
-    CGFloat lineY = lines >= 3 ? 204 : (lines == 2 ? 194 : 184);
+    CGFloat lineY = lines >= 3 ? 224 : (lines == 2 ? 214 : 204);
     if (self.temperatureCelsius > 0) {
         TemperatureLine(@"Battery", self.temperatureCelsius, NSColor.labelColor,
-            NSMakeRect(right - 150, lineY, 146, 20), headerMuted);
+            NSMakeRect(right - 146, lineY, 146, 20), headerMuted);
         lineY -= lines >= 3 ? 20 : 22;
     }
     if (showCPU) {
         NSColor *color = self.processorTemperatureCelsius >= 85 ? WattWarningColor() : NSColor.labelColor;
         TemperatureLine(@"CPU", self.processorTemperatureCelsius, color,
-            NSMakeRect(right - 150, lineY, 146, 20), headerMuted);
+            NSMakeRect(right - 146, lineY, 146, 20), headerMuted);
         lineY -= lines >= 3 ? 20 : 22;
     }
     if (showHealth) {
         // Apple calls under 80% "Service Recommended"; only then is it a warning.
         NSColor *color = self.healthPercent < 80 ? WattWarningColor() : NSColor.labelColor;
-        NSRect healthRect = NSMakeRect(right - 150, lineY, 146, 20);
+        NSRect healthRect = NSMakeRect(right - 146, lineY, 146, 20);
         ReadingLine(@"Health", [NSString stringWithFormat:@"%ld%%", (long)self.healthPercent], color,
             healthRect, headerMuted);
         if (!NSEqualRects(healthRect, _healthTipRect)) {
@@ -503,7 +511,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
         }
     } else if (limit >= 0) {
         [NSColor.labelColor setFill];
-        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(markerX - 1.5, 126, 3, 16) xRadius:2 yRadius:2] fill];
+        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(markerX - 1.5, 146, 3, 16) xRadius:2 yRadius:2] fill];
     }
     // The controller's non-interactive label never intercepts marker dragging.
 
@@ -528,29 +536,32 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
 
     NSColor *muted = [NSColor colorWithCalibratedWhite:dark ? 0.75 : 0.36 alpha:1];
     NSBezierPath *mask = [NSBezierPath bezierPath];
-    CGFloat x0 = 54, x1 = width - 54;
+    CGFloat x0 = 66, x1 = width - 66;
+    NSInteger level = self.chargePercent < 0 ? 100 : self.chargePercent;
+    NSString *battery = level >= 88 ? @"battery.100percent" : level >= 63 ? @"battery.75percent" :
+        level >= 38 ? @"battery.50percent" : level >= 13 ? @"battery.25percent" : @"battery.0percent";
     if (adapter && charging) {
         CGFloat toBattery = FlowWidth(self.batteryWatts);
         CGFloat toMac = FlowWidth(self.systemWatts);
         [mask appendBezierPath:Fork(x0, x1, toBattery, toMac, NO)];
-        FlowNode(@"powerplug.fill", NSMakeRect(20, 32, 34, 34), muted, dark);
-        FlowNode(@"battery.100percent", NSMakeRect(width - 54, 53, 34, 34), muted, dark);
-        FlowNode(@"laptopcomputer", NSMakeRect(width - 54, 11, 34, 34), muted, dark);
+        FlowNode(@"powerplug.fill", NSMakeRect(32, 32, 34, 34), muted, dark);
+        FlowNode(battery, NSMakeRect(width - 66, 53, 34, 34), muted, dark);
+        FlowNode(@"laptopcomputer", NSMakeRect(width - 66, 11, 34, 34), muted, dark);
         // Captions sit beside their own node: source under the plug,
         // destinations right-aligned against their nodes, outside the strokes.
         FlowLabel(@"Battery", self.batteryWatts, NSMakeRect(x0, 86, x1 - x0 - 8, 14), NSTextAlignmentRight, muted);
         FlowLabel(@"Mac", self.systemWatts, NSMakeRect(x0, 0, x1 - x0 - 8, 14), NSTextAlignmentRight, muted);
-        FlowLabel(@"", self.adapterWatts, NSMakeRect(4, 12, 66, 16), NSTextAlignmentCenter, muted);
+        FlowLabel(@"", self.adapterWatts, NSMakeRect(16, 12, 66, 16), NSTextAlignmentCenter, muted);
     } else if (hybrid) {
         CGFloat fromAdapter = FlowWidth(self.adapterWatts);
         CGFloat fromBattery = FlowWidth(-self.batteryWatts);
         [mask appendBezierPath:Fork(x0, x1, fromAdapter, fromBattery, YES)];
-        FlowNode(@"powerplug.fill", NSMakeRect(20, 53, 34, 34), muted, dark);
-        FlowNode(@"battery.100percent", NSMakeRect(20, 11, 34, 34), muted, dark);
-        FlowNode(@"laptopcomputer", NSMakeRect(width - 54, 32, 34, 34), muted, dark);
+        FlowNode(@"powerplug.fill", NSMakeRect(32, 53, 34, 34), muted, dark);
+        FlowNode(battery, NSMakeRect(32, 11, 34, 34), muted, dark);
+        FlowNode(@"laptopcomputer", NSMakeRect(width - 66, 32, 34, 34), muted, dark);
         FlowLabel(@"Adapter", self.adapterWatts, NSMakeRect(x0 + 8, 86, 180, 14), NSTextAlignmentLeft, muted);
         FlowLabel(@"Battery", -self.batteryWatts, NSMakeRect(x0 + 8, 0, 180, 14), NSTextAlignmentLeft, muted);
-        FlowLabel(@"", self.systemWatts, NSMakeRect(width - 70, 12, 66, 16), NSTextAlignmentCenter, muted);
+        FlowLabel(@"", self.systemWatts, NSMakeRect(width - 82, 12, 66, 16), NSTextAlignmentCenter, muted);
     } else {
         BOOL fromBattery = !adapter;
         double watts = fromBattery ? -self.batteryWatts : self.adapterWatts;
@@ -561,15 +572,15 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
             [[NSColor.labelColor colorWithAlphaComponent:0.12] setFill];
             [Band(x0 + FlowNodeGap, 51.5, 48.5, x1 - FlowNodeGap, 51.5, 48.5, YES, YES) fill];
         }
-        FlowNode(fromBattery ? @"battery.100percent" : @"powerplug.fill",
-                 NSMakeRect(20, 33, 34, 34), muted, dark);
-        FlowNode(@"laptopcomputer", NSMakeRect(width - 54, 33, 34, 34), muted, dark);
+        FlowNode(fromBattery ? battery : @"powerplug.fill",
+                 NSMakeRect(32, 33, 34, 34), muted, dark);
+        FlowNode(@"laptopcomputer", NSMakeRect(width - 66, 33, 34, 34), muted, dark);
         Text(watts > 0.25 ? Watts(watts) : @"Power readings updating…",
              NSMakeRect(75, 78, width - 150, 19), 14, NSFontWeightSemibold,
              NSColor.labelColor, NSTextAlignmentCenter);
-        Text(fromBattery ? @"Battery" : @"Adapter", NSMakeRect(12, 9, 50, 16),
+        Text(fromBattery ? @"Battery" : @"Adapter", NSMakeRect(24, 9, 50, 16),
              10, NSFontWeightMedium, muted, NSTextAlignmentCenter);
-        Text(@"Mac", NSMakeRect(width - 61, 9, 45, 16),
+        Text(@"Mac", NSMakeRect(width - 74, 9, 50, 16),
              10, NSFontWeightMedium, muted, NSTextAlignmentCenter);
         if (adapter && !charging) {
             Text(@"Battery held · 0 W", NSMakeRect(84, 9, width - 168, 17),

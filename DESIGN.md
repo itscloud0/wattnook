@@ -106,7 +106,7 @@ SF Pro throughout. The charge is 66 pt Light; System headline values 22 pt Semib
 
 ## Layout
 
-400 pt wide. Battery is 508 pt tall, System, Storage, Settings and History 532 pt. Tiles use a 12 pt outer margin; text not in a tile keeps the 24 pt content margin. 4 pt rhythm.
+400 pt wide. Battery is 502 pt tall, System, Storage, Settings and History 532 pt. One 8 pt grid: tiles and full-width controls at a 16 pt margin (16–384), every text edge at 32 pt (32–368) whether on the sky or inside a tile, 8 pt between a heading and its tile and between stacked tiles, 20–24 pt between groups, 12 pt inside tiles.
 
 **Battery, top to bottom:** header (WattNook, Settings); Battery / System / Storage destinations; the 66 pt charge with its state line and the Battery / CPU / Health readings on the right; the draggable limit rail with its action (Top Up, Discharge, or Update Helper); the Power tile holding the flow; the 15-minute Mac-power strip tile; Heat Protection and Keep Awake action tiles side by side (Keep Awake spans both when heat is unavailable).
 
@@ -125,6 +125,10 @@ None beyond the sky and one tile step. No hairlines, no shadows except the limit
 ### The power strip (`WattPowerStripView`)
 
 The forecast's hourly row, for power: 90 bars, one per 10 s of Mac draw (15 minutes), oldest on the left. Bar colour says what the battery did: green charging, amber heat pause, white held or on battery. Empty slots are a faint baseline, never invented bars. Header: "Mac power · last 15 min" and "avg · peak". Samples come from the same AppleSmartBattery snapshot as the flow and are skipped while readings disagree.
+
+### Flow endpoints
+
+The endpoints are the things themselves: this Mac's own artwork (`NSImageNameComputer`), a battery symbol at the real charge level (0/25/50/75/100), a white plug. No grey chips behind them.
 
 ### Charge action
 

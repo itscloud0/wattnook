@@ -280,9 +280,9 @@ int main(int argc, const char *argv[]) {
         @autoreleasepool { BattRefreshPopover(c,63,81); [c.powerFlowView setLimitPercent:-1]; BattRefreshPopover(c,63,81); }
         NSView *view = c.popover.contentViewController.view;
         // The approved full redesign gives both destinations equal, usable lanes.
-        assert(NSWidth(view.bounds) == 400 && NSHeight(view.bounds) == 508);
-        assert(NSHeight(c.powerFlowView.frame) == 232);
-        assert(NSEqualRects(c.powerFlowView.frame,NSMakeRect(0,188,400,232)));
+        assert(NSWidth(view.bounds) == 400 && NSHeight(view.bounds) == 502);
+        assert(NSHeight(c.powerFlowView.frame) == 252);
+        assert(NSEqualRects(c.powerFlowView.frame,NSMakeRect(0,198,400,252)));
         assert(NSMaxY(FindButton(view,@"History").frame) + 6 <= 446);
         // Keyboard: ⌘2/⌘3/⌘1 switch tabs, ⌘, toggles Settings.
         NSEvent *(^command)(NSString *) = ^NSEvent *(NSString *key) {
@@ -293,7 +293,7 @@ int main(int argc, const char *argv[]) {
         assert([view performKeyEquivalent:command(@"3")] && ((NSButton *)FindButton(view,@"Storage")).state == NSControlStateValueOn);
         assert([view performKeyEquivalent:command(@",")] && !((NSView *)[view valueForKey:@"_settingsPage"]).hidden);
         assert([view performKeyEquivalent:command(@",")] && [view performKeyEquivalent:command(@"1")]);
-        assert(((NSButton *)FindButton(view,@"Battery")).state == NSControlStateValueOn && NSHeight(view.bounds) == 508);
+        assert(((NSButton *)FindButton(view,@"Battery")).state == NSControlStateValueOn && NSHeight(view.bounds) == 502);
         NSButton *historyBack = FindButton([view valueForKey:@"_historyPage"],@"System");
         assert(historyBack && NSMaxY(historyBack.frame) + 6 <= 446 && historyBack.image != nil);
         assert(NSWidth(FindButton(view,@"Battery").frame) >= 112);
@@ -409,7 +409,7 @@ int main(int argc, const char *argv[]) {
         BattRefreshPopover(c,63,81);
         assert(!c.heatButton.enabled && [c.heatButton.title isEqual:@"Heat unavailable"]);
         assert(c.heatButton.hidden);
-        assert(NSMinX(c.darkButton.frame) == 12 && NSMaxX(c.darkButton.frame) == 388);
+        assert(NSMinX(c.darkButton.frame) == 16 && NSMaxX(c.darkButton.frame) == 384);
         NSTextField *heatNotice = [view valueForKey:@"_heatNotice"];
         assert(!heatNotice.hidden && [heatNotice.stringValue containsString:@"unavailable"]);
         assert([heatNotice.stringValue sizeWithAttributes:@{NSFontAttributeName:heatNotice.font}].width <= NSWidth(heatNotice.frame));
@@ -425,8 +425,8 @@ int main(int argc, const char *argv[]) {
         BattRefreshPopover(c,63,81);
         assert(c.heatButton.enabled && [c.heatButton.accessibilityLabel isEqual:@"Heat protection. Checking…"]);
         assert(!c.heatButton.hidden && heatNotice.hidden);
-        assert(NSMinX(c.darkButton.frame) == 204 && NSMaxX(c.darkButton.frame) == 388);
-        assert(NSWidth(c.heatButton.frame) == NSWidth(c.darkButton.frame) && NSMinX(c.heatButton.frame) == 12);
+        assert(NSMinX(c.darkButton.frame) == 204 && NSMaxX(c.darkButton.frame) == 384);
+        assert(NSWidth(c.heatButton.frame) == NSWidth(c.darkButton.frame) && NSMinX(c.heatButton.frame) == 16);
         c.keepAwakeChanging = YES;
         BattRefreshPopover(c,63,81);
         assert([c.darkButton.title isEqual:@"Changing…"] && !c.darkButton.enabled);
@@ -599,11 +599,11 @@ int main(int argc, const char *argv[]) {
                 NSView *actionGlass = nil;
                 for (NSView *container in [view valueForKey:@"_glassViews"])
                     if (container.superview == batteryPage) actionGlass = container;
-                assert(actionGlass && NSEqualRects(actionGlass.frame,NSMakeRect(12,40,376,56)));
+                assert(actionGlass && NSEqualRects(actionGlass.frame,NSMakeRect(16,46,368,56)));
                 NSView *glassContent = [actionGlass valueForKey:@"contentView"];
                 assert(glassContent.subviews.count == (unavailable.boolValue ? 1 : 2));
                 if (unavailable.boolValue)
-                    assert(NSEqualRects(((NSView *)glassContent.subviews.firstObject).frame,NSMakeRect(0,0,376,56)));
+                    assert(NSEqualRects(((NSView *)glassContent.subviews.firstObject).frame,NSMakeRect(0,0,368,56)));
                 assert(CountGlassViews(view) == 2);
             }
             [FindButton(view,@"System") performClick:nil];
@@ -721,7 +721,7 @@ int main(int argc, const char *argv[]) {
                     assert(starts >= 3 && starts <= 6 && closes == 3);
                     CGFloat center = NSMidX(c.powerFlowView.bounds), width = NSWidth(c.powerFlowView.bounds);
                     // Solid shared trunk at the common node, a gap between branches mid-way.
-                    assert(CGPathContainsPoint(outline, NULL, CGPointMake(merge ? width-54-8 : 54+8, 49), NO));
+                    assert(CGPathContainsPoint(outline, NULL, CGPointMake(merge ? width-66-8 : 66+8, 49), NO));
                     assert(!CGPathContainsPoint(outline, NULL, CGPointMake(center, 49), NO));
                 }
                 if (merge) break;
