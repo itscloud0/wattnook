@@ -2,15 +2,27 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleDisplayName</key><string>WattNook</string>
-  <key>CFBundleExecutable</key><string>WattNook</string>
-  <key>CFBundleIconFile</key><string>WattNook</string>
-  <key>CFBundleIdentifier</key><string>io.iliasorokin.wattnook</string>
-  <key>CFBundleName</key><string>WattNook</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1</string>
-  <key>CFBundleVersion</key><string>1</string>
-  <key>LSMinimumSystemVersion</key><string>15.0</string>
-  <key>LSUIElement</key><true/>
+	<key>CFBundleDisplayName</key>
+	<string>WattNook</string>
+	<key>CFBundleExecutable</key>
+	<string>WattNook</string>
+	<key>CFBundleIconFile</key>
+	<string>WattNook</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.iliasorokin.wattnook</string>
+	<key>CFBundleName</key>
+	<string>WattNook</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>WattNook asks Finder to move apps you choose to the Trash when they were installed by another user; Finder then asks for your password.</string>
 </dict>
 </plist>

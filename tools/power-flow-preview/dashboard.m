@@ -345,6 +345,10 @@ int main(int argc, const char *argv[]) {
             @{@"name":@"limit-held", @"charge":@80, @"plug":@YES, @"adapter":@21, @"battery":@0, @"system":@21, @"heat":@NO},
             @{@"name":@"heat-held", @"charge":@64, @"plug":@YES, @"adapter":@18.9, @"battery":@0, @"system":@18.9, @"heat":@YES},
             @{@"name":@"hybrid", @"charge":@70, @"plug":@YES, @"adapter":@11.1, @"battery":@-5.5, @"system":@16.6, @"heat":@NO},
+            // Cases reported live: a weak share of battery help, and a heavy charge
+            // whose labels must stay off the seam between bands.
+            @{@"name":@"hybrid-small", @"charge":@55, @"plug":@YES, @"adapter":@11.13, @"battery":@-1.58, @"system":@12.71, @"heat":@NO},
+            @{@"name":@"charging-heavy", @"charge":@55, @"plug":@YES, @"adapter":@56.35, @"battery":@40.16, @"system":@16.19, @"heat":@NO},
             @{@"name":@"unavailable", @"charge":@70, @"plug":@NO, @"adapter":@0, @"battery":@0, @"system":@0, @"heat":@NO},
             @{@"name":@"inconsistent", @"charge":@57, @"plug":@YES, @"adapter":@14, @"battery":@14.3, @"system":@0, @"heat":@NO}];
         for (NSDictionary *state in states) {

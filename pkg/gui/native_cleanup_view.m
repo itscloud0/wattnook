@@ -327,6 +327,24 @@ static NSView *StorageTile(NSView *parent,NSRect frame) {
  }
  return nil;
 }
+// Asks Finder to move the items; Finder requests administrator rights itself.
+// Returns nil on success, or a short reason (including the user canceling).
+- (NSString *)finderTrash:(NSArray *)urls {
+ NSMutableArray *files=[NSMutableArray array];
+ for(NSURL *url in urls){
+  NSString *path=[[url.path stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"]
+   stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
+  [files addObject:[NSString stringWithFormat:@"POSIX file \"%@\"",path]];
+ }
+ NSString *source=[NSString stringWithFormat:@"tell application \"Finder\" to delete {%@}",[files componentsJoinedByString:@", "]];
+ NSDictionary *error=nil;
+ NSAppleScript *script=[[[NSAppleScript alloc]initWithSource:source]autorelease];
+ if([script executeAndReturnError:&error])return nil;
+ NSInteger code=[error[NSAppleScriptErrorNumber] integerValue];
+ if(code==-128)return @"canceled";
+ if(code==-1743)return @"allow WattNook to control Finder in System Settings, Privacy & Security, Automation";
+ return error[NSAppleScriptErrorMessage] ?: @"Finder could not move it";
+}
 - (void)trash:(id)sender {
  if(!_selectedItem)return;
  NSArray *parts=[self selectedParts];if(!parts.count)return;
@@ -349,15 +367,26 @@ static NSView *StorageTile(NSView *parent,NSRect frame) {
  // app was installed by another user; everything stays recoverable.
  [NSWorkspace.sharedWorkspace recycleURLs:urls completionHandler:^(NSDictionary *moved,NSError *error){
   dispatch_async(dispatch_get_main_queue(),^{
+   NSUInteger count=moved.count;
    if(error && moved.count<urls.count){
-    self.detailReason.stringValue=[NSString stringWithFormat:@"Not moved: %@",error.localizedDescription];
-    self.trashButton.enabled=YES;return;
+    // Items installed by another user (often root, e.g. Adobe apps) need an
+    // administrator: Finder performs the same move and shows the password
+    // prompt. Anything else keeps its error.
+    NSMutableArray *left=[NSMutableArray array];
+    for(NSURL *url in urls)if(!moved[url])[left addObject:url];
+    NSString *failure=error.localizedDescription;
+    if([error.domain isEqual:NSCocoaErrorDomain] && error.code==NSFileWriteNoPermissionError){
+     NSString *finderError=[self finderTrash:left];
+     if(!finderError){count+=left.count;failure=nil;}
+     else failure=finderError;
+    }
+    if(failure){self.detailReason.stringValue=[NSString stringWithFormat:@"Not moved: %@",failure];self.trashButton.enabled=YES;return;}
    }
    NSMutableArray *remaining=[[self.applications mutableCopy]autorelease];
    if(bundle)[remaining removeObject:item];
    self.applications=remaining;[self showTotals];[self filter];[self back:nil];
-   self.statusLabel.stringValue=[NSString stringWithFormat:@"Moved %lu item%@ of %@ to the Trash.",(unsigned long)moved.count,
-    moved.count==1?@"":@"s",item[@"app"][@"name"]];
+   self.statusLabel.stringValue=[NSString stringWithFormat:@"Moved %lu item%@ of %@ to the Trash.",(unsigned long)count,
+    count==1?@"":@"s",item[@"app"][@"name"]];
   });
  }];
 }

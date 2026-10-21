@@ -319,7 +319,7 @@ static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRe
         limit >= 0 && limit < 100 && self.chargePercent >= limit - 1;
     NSString *state = !self.hasTelemetry ? @"Power data unavailable" :
         (hybrid && !self.dischargingToLimit ? @"AC + battery" :
-         (self.heatPaused && self.pluggedIn ? @"Paused while the battery cools" :
+         (self.heatPaused && self.pluggedIn ? (self.topUpActive ? @"Top Up starts once the battery cools" : @"Paused while the battery cools") :
          (self.topUpActive && self.pluggedIn ? @"Topping up to 100%" :
          (self.dischargingToLimit && self.pluggedIn && limit > 0 ?
             [NSString stringWithFormat:@"Discharging to %ld%%", (long)limit] :
@@ -495,41 +495,49 @@ static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRe
             [bandColor setFill]; [path fill];
         }
     };
-    void (^label)(double, CGFloat, CGFloat) = ^(double watts, CGFloat y0, CGFloat y1) {
-        if (y1 - y0 < 18) return;
-        Text([NSString stringWithFormat:@"%.2f W", watts], NSMakeRect(bandL, (y0 + y1) / 2 - 9, bandR - bandL, 18),
+    // A band's label sits where the band crosses the middle (the curve is
+    // symmetric, so that is the average of its two ends). Too thin there, and
+    // the figure moves into its block instead of straddling the seam.
+    BOOL (^fits)(CGFloat, CGFloat, CGFloat, CGFloat) = ^BOOL(CGFloat l0, CGFloat l1, CGFloat r0, CGFloat r1) {
+        return ((l1 - l0) + (r1 - r0)) / 2 >= 24;
+    };
+    void (^label)(double, CGFloat, CGFloat, CGFloat, CGFloat) = ^(double watts, CGFloat l0, CGFloat l1, CGFloat r0, CGFloat r1) {
+        CGFloat mid = ((l0 + r0) / 2 + (l1 + r1) / 2) / 2;
+        Text([NSString stringWithFormat:@"%.2f W", watts], NSMakeRect(bandL, mid - 9, bandR - bandL, 18),
              14, NSFontWeightSemibold, NSColor.labelColor, NSTextAlignmentCenter);
     };
+    NSString *(^inBlock)(double) = ^NSString *(double w) { return [NSString stringWithFormat:@"%.1f W", MAX(0, w)]; };
     NSString *(^total)(double) = ^NSString *(double w) { return [NSString stringWithFormat:@"%.0fW", MAX(0, w)]; };
     NSColor *macTint = WattAccentColor();
     if ((adapter && charging) || hybrid) {
         double a = adapter && charging ? self.batteryWatts : self.adapterWatts;   // upper stream
         double b = adapter && charging ? self.systemWatts : -self.batteryWatts;   // lower stream
         double sum = MAX(0.1, a + b);
-        CGFloat usable = top - split, upper = MAX(40, MIN(usable - 40, usable * a / sum));
+        CGFloat usable = top - split, upper = MAX(44, MIN(usable - 44, usable * a / sum));
         NSRect upperNode = NSMakeRect(0, top - upper, nodeW, upper), lowerNode = NSMakeRect(0, 0, nodeW, usable - upper);
         CGFloat seam = top * b / sum;
-        NSBezierPath *upperBand, *lowerBand;
-        if (adapter && charging) {
+        BOOL fork = adapter && charging;
+        // Left and right ends of each band.
+        CGFloat u[4] = {fork ? seam : NSMinY(upperNode), fork ? top : NSMaxY(upperNode), fork ? NSMinY(upperNode) : seam, fork ? NSMaxY(upperNode) : top};
+        CGFloat d[4] = {fork ? 0 : NSMinY(lowerNode), fork ? seam : NSMaxY(lowerNode), fork ? NSMinY(lowerNode) : 0, fork ? NSMaxY(lowerNode) : seam};
+        BOOL upperFits = fits(u[0], u[1], u[2], u[3]), lowerFits = fits(d[0], d[1], d[2], d[3]);
+        NSBezierPath *upperBand = band(u[0], u[1], u[2], u[3]), *lowerBand = band(d[0], d[1], d[2], d[3]);
+        if (fork) {
             upperNode.origin.x = lowerNode.origin.x = rightX;
-            upperBand = band(seam, top, NSMinY(upperNode), NSMaxY(upperNode));
-            lowerBand = band(0, seam, NSMinY(lowerNode), NSMaxY(lowerNode));
             node(NSMakeRect(leftX, 0, nodeW, top), YES, YES, YES, @"bolt.fill", NSColor.labelColor, total(self.adapterWatts));
-            node(upperNode, NO, YES, YES, battery, NSColor.labelColor, nil);
-            node(lowerNode, NO, YES, YES, @"laptopcomputer", macTint, nil);
+            node(upperNode, NO, YES, YES, battery, NSColor.labelColor, upperFits ? nil : inBlock(a));
+            node(lowerNode, NO, YES, YES, @"laptopcomputer", macTint, lowerFits ? nil : inBlock(b));
             fillBand(upperBand, NO); fillBand(lowerBand, NO);
         } else {
             upperNode.origin.x = lowerNode.origin.x = leftX;
-            upperBand = band(NSMinY(upperNode), NSMaxY(upperNode), seam, top);
-            lowerBand = band(NSMinY(lowerNode), NSMaxY(lowerNode), 0, seam);
-            node(upperNode, YES, YES, YES, @"bolt.fill", NSColor.labelColor, nil);
-            node(lowerNode, YES, YES, YES, battery, NSColor.labelColor, nil);
+            node(upperNode, YES, YES, YES, @"bolt.fill", NSColor.labelColor, upperFits ? nil : inBlock(a));
+            node(lowerNode, YES, YES, YES, battery, NSColor.labelColor, lowerFits ? nil : inBlock(b));
             node(NSMakeRect(rightX, 0, nodeW, top), NO, YES, YES, @"laptopcomputer", macTint, total(self.systemWatts));
             fillBand(upperBand, YES); fillBand(lowerBand, YES);
         }
         [mask appendBezierPath:upperBand]; [mask appendBezierPath:lowerBand];
-        label(a, NSMinY(upperNode), NSMaxY(upperNode));
-        label(b, NSMinY(lowerNode), NSMaxY(lowerNode));
+        if (upperFits) label(a, u[0], u[1], u[2], u[3]);
+        if (lowerFits) label(b, d[0], d[1], d[2], d[3]);
     } else {
         double w = fromBattery ? -self.batteryWatts : self.adapterWatts;
         node(NSMakeRect(leftX, 0, nodeW, top), YES, YES, YES, fromBattery ? battery : @"bolt.fill", NSColor.labelColor, nil);
