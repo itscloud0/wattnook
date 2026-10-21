@@ -101,9 +101,11 @@ None beyond the ground and one group step. No hairlines, no shadows except the l
 
 The forecast's hourly row, for power: 90 bars, one per 10 s of Mac draw (15 minutes), oldest on the left. Bar colour says what the battery did: green charging, amber heat pause, white held or on battery. Empty slots are a faint baseline, never invented bars. Header: "Mac power · last 15 min" and "avg · peak". Samples come from the same AppleSmartBattery snapshot as the flow and are skipped while readings disagree.
 
-### Flow endpoints
+### Power group
 
-The endpoints are the things themselves: this Mac's own artwork (`NSImageNameComputer`), a battery symbol at the real charge level (0/25/50/75/100), a white plug. No grey chips behind them.
+Where the power goes, the way macOS shows where storage goes: the input figure (24 pt semibold) with its source in words ("from the adapter", "from the battery", "from the adapter and battery") and its source icon; one 10 pt split bar with 2 pt gaps between segments; a legend underneath. Charging splits the adapter's input into Mac (accent) and Battery (green); a hybrid load splits the Mac's draw into Adapter (accent) and Battery (orange); otherwise one segment. "Battery idle" sits at the legend's right when the adapter powers the Mac and the battery is held. The travelling highlight runs inside the bar only.
+
+Icons are one family: SF Symbols at one size and weight (plug, Mac, a battery at the real charge level), each tinted with its segment's colour. No raster artwork, no chips behind icons.
 
 ### Charge action
 

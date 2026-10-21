@@ -711,18 +711,11 @@ int main(int argc, const char *argv[]) {
                     CABasicAnimation *pulse = (CABasicAnimation *)[layer animationForKey:@"flow"];
                     if (!pulse) continue;
                     assert(fabs(pulse.duration - 3.2) < 0.001);
-                    __block NSInteger starts = 0, closes = 0;
                     CGPathRef outline = ((CAShapeLayer *)layer.mask).path;
-                    CGPathApplyWithBlock(outline, ^(const CGPathElement *element) {
-                        starts += element->type == kCGPathElementMoveToPoint;
-                        closes += element->type == kCGPathElementCloseSubpath;
-                    });
-                    // Two Sankey bands (AppKit may append empty moves after closes).
-                    assert(starts >= 3 && starts <= 6 && closes == 3);
-                    CGFloat center = NSMidX(c.powerFlowView.bounds), width = NSWidth(c.powerFlowView.bounds);
-                    // Solid shared trunk at the common node, a gap between branches mid-way.
-                    assert(CGPathContainsPoint(outline, NULL, CGPointMake(merge ? width-66-8 : 66+8, 49), NO));
-                    assert(!CGPathContainsPoint(outline, NULL, CGPointMake(center, 49), NO));
+                    CGFloat center = NSMidX(c.powerFlowView.bounds);
+                    // The highlight runs inside the split power bar (y 44-54) and nowhere else.
+                    assert(CGPathContainsPoint(outline, NULL, CGPointMake(center, 49), NO));
+                    assert(!CGPathContainsPoint(outline, NULL, CGPointMake(center, 80), NO));
                 }
                 if (merge) break;
             }

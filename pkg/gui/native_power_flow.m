@@ -39,100 +39,13 @@ static void Symbol(NSString *name, NSRect rect, CGFloat size, NSColor *color) {
             operation:NSCompositingOperationSourceOver fraction:1];
 }
 
-// Endpoints are the things themselves, not glyphs in grey chips: this Mac's
-// own artwork, a battery showing its real level, a white plug.
-static void FlowNode(NSString *symbol, NSRect rect, NSColor *symbolColor, BOOL dark) {
-    (void)symbolColor; (void)dark;
-    if ([symbol isEqual:@"laptopcomputer"]) {
-        NSImage *mac = [NSImage imageNamed:NSImageNameComputer];
-        if (mac) {
-            [mac drawInRect:NSInsetRect(rect, -4, -4) fromRect:NSZeroRect
-                  operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
-            return;
-        }
-    }
-    Symbol(symbol, NSInsetRect(rect, 2, 2), 26, NSColor.whiteColor);
-}
 
-static NSColor *FlowColor(void) {
-    return WattAccentColor();
-}
-
-// Sankey-style bands: constant thickness per stream (thickness encodes
-// watts), round ends that stop just short of the nodes, straight lead-ins
-// and one smooth S-curve between.
-static const CGFloat FlowNodeGap = 4;
-
-static NSBezierPath *Band(CGFloat x0, CGFloat sourceTop, CGFloat sourceBottom,
-                          CGFloat x1, CGFloat targetTop, CGFloat targetBottom,
-                          BOOL capStart, BOOL capEnd) {
-    CGFloat sr = (sourceTop - sourceBottom) / 2, tr = (targetTop - targetBottom) / 2;
-    if (capStart) x0 += sr;
-    if (capEnd) x1 -= tr;
-    CGFloat lead = 10, xs = x0 + lead, xe = x1 - lead, k = (xe - xs) * 0.5;
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    [path moveToPoint:NSMakePoint(x0, sourceTop)];
-    [path lineToPoint:NSMakePoint(xs, sourceTop)];
-    [path curveToPoint:NSMakePoint(xe, targetTop)
-         controlPoint1:NSMakePoint(xs + k, sourceTop) controlPoint2:NSMakePoint(xe - k, targetTop)];
-    [path lineToPoint:NSMakePoint(x1, targetTop)];
-    if (capEnd) [path appendBezierPathWithArcWithCenter:NSMakePoint(x1, targetTop - tr)
-        radius:tr startAngle:90 endAngle:-90 clockwise:YES];
-    else [path lineToPoint:NSMakePoint(x1, targetBottom)];
-    [path lineToPoint:NSMakePoint(xe, targetBottom)];
-    [path curveToPoint:NSMakePoint(xs, sourceBottom)
-         controlPoint1:NSMakePoint(xe - k, targetBottom) controlPoint2:NSMakePoint(xs + k, sourceBottom)];
-    [path lineToPoint:NSMakePoint(x0, sourceBottom)];
-    if (capStart) [path appendBezierPathWithArcWithCenter:NSMakePoint(x0, sourceBottom + sr)
-        radius:sr startAngle:-90 endAngle:90 clockwise:YES];
-    [path closePath];
-    return path;
-}
-
-static void FillFlow(NSBezierPath *path) {
-    [FlowColor() setFill];
-    [path fill];
-}
 
 // A single straight stream of constant thickness between two nodes.
-static NSBezierPath *Flow(CGFloat x0, CGFloat y0, CGFloat x1, CGFloat y1,
-                          CGFloat startWidth, CGFloat endWidth) {
-    (void)endWidth;
-    NSBezierPath *path = Band(x0 + FlowNodeGap, y0 + startWidth / 2, y0 - startWidth / 2,
-                              x1 - FlowNodeGap, y1 + startWidth / 2, y1 - startWidth / 2, YES, YES);
-    FillFlow(path);
-    return path;
-}
 
 // Two streams stacked into one trunk at the shared node, splitting to (or
 // merging from) the upper and lower nodes. The trunk gets a single round
 // end, so the split reads as one stream dividing.
-static NSBezierPath *Fork(CGFloat x0, CGFloat x1, CGFloat upperWidth,
-                          CGFloat lowerWidth, BOOL merge) {
-    CGFloat center = 49, radius = (upperWidth + lowerWidth) / 2, top = center + radius;
-    CGFloat trunk = x0 + FlowNodeGap + radius;
-    // The upper band overlaps the lower by a hair so antialiasing leaves no seam.
-    NSBezierPath *upper = Band(trunk, top, top - upperWidth - 0.6,
-                               x1 - FlowNodeGap, 70 + upperWidth / 2, 70 - upperWidth / 2, NO, YES);
-    NSBezierPath *lower = Band(trunk, top - upperWidth, top - upperWidth - lowerWidth,
-                               x1 - FlowNodeGap, 28 + lowerWidth / 2, 28 - lowerWidth / 2, NO, YES);
-    NSBezierPath *cap = [NSBezierPath bezierPath];
-    [cap moveToPoint:NSMakePoint(trunk + 1, center + radius)];
-    [cap appendBezierPathWithArcWithCenter:NSMakePoint(trunk, center)
-        radius:radius startAngle:90 endAngle:270 clockwise:NO];
-    [cap lineToPoint:NSMakePoint(trunk + 1, center - radius)];
-    [cap closePath];
-    if (merge) {
-        NSAffineTransform *mirror = [NSAffineTransform transform];
-        [mirror translateXBy:x0 + x1 yBy:0];
-        [mirror scaleXBy:-1 yBy:1];
-        for (NSBezierPath *path in @[upper, lower, cap]) [path transformUsingAffineTransform:mirror];
-    }
-    for (NSBezierPath *path in @[cap, lower, upper]) FillFlow(path);
-    NSBezierPath *all = [NSBezierPath bezierPath];
-    [all appendBezierPath:upper]; [all appendBezierPath:lower]; [all appendBezierPath:cap];
-    return all;
-}
 
 static void ReadingLine(NSString *name, NSString *value, NSColor *color, NSRect rect, NSColor *muted) {
     NSMutableAttributedString *text = [[[NSMutableAttributedString alloc] initWithString:[name stringByAppendingString:@"  "]
@@ -156,29 +69,8 @@ static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRe
     [text drawAtPoint:NSMakePoint(NSMaxX(rect) - measured.width, NSMidY(rect) - measured.height / 2)];
 }
 
-static CGFloat FlowWidth(double watts) {
-    return MIN(12, MAX(3, 2 + sqrt(MAX(0, watts)) * 1.4));
-}
 
-static NSString *Watts(double watts) {
-    return [NSString stringWithFormat:@"%.1f W", MAX(0, watts)];
-}
 
-// One caption style for every node: muted name, emphasized watts.
-static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment alignment, NSColor *muted) {
-    NSMutableAttributedString *text = [[[NSMutableAttributedString alloc] init] autorelease];
-    if (name.length) [text appendAttributedString:[[[NSAttributedString alloc] initWithString:[name stringByAppendingString:@"  "]
-        attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:11 weight:NSFontWeightMedium],
-                     NSForegroundColorAttributeName:muted}] autorelease]];
-    [text appendAttributedString:[[[NSAttributedString alloc] initWithString:Watts(watts)
-        attributes:@{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightSemibold],
-                     NSForegroundColorAttributeName:NSColor.labelColor}] autorelease]];
-    NSSize measured = text.size;
-    CGFloat x = NSMinX(rect);
-    if (alignment == NSTextAlignmentCenter) x = NSMidX(rect) - measured.width / 2;
-    if (alignment == NSTextAlignmentRight) x = NSMaxX(rect) - measured.width;
-    [text drawAtPoint:NSMakePoint(x, NSMidY(rect) - measured.height / 2)];
-}
 
 @implementation BattPowerFlowView {
     NSInteger _previewLimitPercent;
@@ -541,58 +433,83 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
         return;
     }
 
-    NSColor *muted = [NSColor colorWithCalibratedWhite:dark ? 0.75 : 0.36 alpha:1];
-    NSBezierPath *mask = [NSBezierPath bezierPath];
-    CGFloat x0 = 66, x1 = width - 66;
+    // Where the power goes, as macOS shows where storage goes: one figure with
+    // its source, one split bar, a legend of coloured dots. No icons.
+    (void)dark;
+    BOOL fromBattery = !adapter;
+    // One icon family throughout: SF Symbols, one size and weight, each tinted
+    // with its segment's colour.
     NSInteger level = self.chargePercent < 0 ? 100 : self.chargePercent;
     NSString *battery = level >= 88 ? @"battery.100percent" : level >= 63 ? @"battery.75percent" :
         level >= 38 ? @"battery.50percent" : level >= 13 ? @"battery.25percent" : @"battery.0percent";
+    NSString *plug = [NSImage imageWithSystemSymbolName:@"powerplug.portrait.fill" accessibilityDescription:nil] ?
+        @"powerplug.portrait.fill" : @"powerplug.fill";
+    double input = hybrid ? self.adapterWatts - self.batteryWatts :
+        (fromBattery ? -self.batteryWatts : self.adapterWatts);
+    NSString *source = hybrid ? @"from the adapter and battery" :
+        (fromBattery ? @"from the battery" : @"from the adapter");
+    NSMutableAttributedString *headline = [[[NSMutableAttributedString alloc]
+        initWithString:input > 0.25 ? [NSString stringWithFormat:@"%.1f W", input] : @"—"
+            attributes:@{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:24 weight:NSFontWeightSemibold],
+                         NSForegroundColorAttributeName:NSColor.labelColor}] autorelease];
+    [headline appendAttributedString:[[[NSAttributedString alloc] initWithString:[@"  " stringByAppendingString:source]
+        attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:13 weight:NSFontWeightRegular],
+                     NSForegroundColorAttributeName:NSColor.secondaryLabelColor}] autorelease]];
+    Symbol(hybrid || !fromBattery ? plug : battery, NSMakeRect(32, 74, 22, 24), 17, NSColor.labelColor);
+    [headline drawAtPoint:NSMakePoint(62, 86 - headline.size.height / 2)];
+
+    // Segments: what the input feeds (charging: Mac + battery) or what feeds
+    // the Mac (hybrid: adapter + battery). Each carries its legend entry.
+    NSMutableArray *segments = [NSMutableArray array];
+    void (^segment)(NSString *, NSString *, double, NSColor *) = ^(NSString *name, NSString *icon, double watts, NSColor *color) {
+        if (watts > 0.05) [segments addObject:@[name, @(watts), color, icon]];
+    };
     if (adapter && charging) {
-        CGFloat toBattery = FlowWidth(self.batteryWatts);
-        CGFloat toMac = FlowWidth(self.systemWatts);
-        [mask appendBezierPath:Fork(x0, x1, toBattery, toMac, NO)];
-        FlowNode(@"powerplug.fill", NSMakeRect(32, 32, 34, 34), muted, dark);
-        FlowNode(battery, NSMakeRect(width - 66, 53, 34, 34), muted, dark);
-        FlowNode(@"laptopcomputer", NSMakeRect(width - 66, 11, 34, 34), muted, dark);
-        // Captions sit beside their own node: source under the plug,
-        // destinations right-aligned against their nodes, outside the strokes.
-        FlowLabel(@"Battery", self.batteryWatts, NSMakeRect(x0, 86, x1 - x0 - 8, 14), NSTextAlignmentRight, muted);
-        FlowLabel(@"Mac", self.systemWatts, NSMakeRect(x0, 0, x1 - x0 - 8, 14), NSTextAlignmentRight, muted);
-        FlowLabel(@"", self.adapterWatts, NSMakeRect(16, 12, 66, 16), NSTextAlignmentCenter, muted);
+        segment(@"Mac", @"laptopcomputer", self.systemWatts, WattAccentColor());
+        segment(@"Battery", battery, self.batteryWatts, NSColor.systemGreenColor);
     } else if (hybrid) {
-        CGFloat fromAdapter = FlowWidth(self.adapterWatts);
-        CGFloat fromBattery = FlowWidth(-self.batteryWatts);
-        [mask appendBezierPath:Fork(x0, x1, fromAdapter, fromBattery, YES)];
-        FlowNode(@"powerplug.fill", NSMakeRect(32, 53, 34, 34), muted, dark);
-        FlowNode(battery, NSMakeRect(32, 11, 34, 34), muted, dark);
-        FlowNode(@"laptopcomputer", NSMakeRect(width - 66, 32, 34, 34), muted, dark);
-        FlowLabel(@"Adapter", self.adapterWatts, NSMakeRect(x0 + 8, 86, 180, 14), NSTextAlignmentLeft, muted);
-        FlowLabel(@"Battery", -self.batteryWatts, NSMakeRect(x0 + 8, 0, 180, 14), NSTextAlignmentLeft, muted);
-        FlowLabel(@"", self.systemWatts, NSMakeRect(width - 82, 12, 66, 16), NSTextAlignmentCenter, muted);
+        segment(@"Adapter", plug, self.adapterWatts, WattAccentColor());
+        segment(@"Battery", battery, -self.batteryWatts, NSColor.systemOrangeColor);
     } else {
-        BOOL fromBattery = !adapter;
-        double watts = fromBattery ? -self.batteryWatts : self.adapterWatts;
-        if (watts > 0.25) [mask appendBezierPath:
-            Flow(x0, 50, x1, 50, FlowWidth(watts), FlowWidth(watts))];
-        else {
-            // No measurable power yet: a faint track, not a full-strength stream.
-            [[NSColor.labelColor colorWithAlphaComponent:0.12] setFill];
-            [Band(x0 + FlowNodeGap, 51.5, 48.5, x1 - FlowNodeGap, 51.5, 48.5, YES, YES) fill];
+        segment(@"Mac", @"laptopcomputer", input, WattAccentColor());
+    }
+    double total = 0;
+    for (NSArray *item in segments) total += [item[1] doubleValue];
+    NSRect bar = NSMakeRect(32, 44, width - 64, 10);
+    NSBezierPath *track = [NSBezierPath bezierPathWithRoundedRect:bar xRadius:5 yRadius:5];
+    [[NSColor.whiteColor colorWithAlphaComponent:0.10] setFill]; [track fill];
+    NSBezierPath *mask = [NSBezierPath bezierPath];
+    if (total > 0.05) {
+        [NSGraphicsContext saveGraphicsState];
+        [track addClip];
+        CGFloat x = NSMinX(bar);
+        for (NSUInteger i = 0; i < segments.count; i++) {
+            CGFloat w = NSWidth(bar) * [segments[i][1] doubleValue] / total;
+            [(NSColor *)segments[i][2] setFill];
+            // A 2 pt gap separates segments, like the storage bar.
+            NSRectFill(NSMakeRect(x, NSMinY(bar), MAX(1, w - (i + 1 < segments.count ? 2 : 0)), NSHeight(bar)));
+            x += w;
         }
-        FlowNode(fromBattery ? battery : @"powerplug.fill",
-                 NSMakeRect(32, 33, 34, 34), muted, dark);
-        FlowNode(@"laptopcomputer", NSMakeRect(width - 66, 33, 34, 34), muted, dark);
-        Text(watts > 0.25 ? Watts(watts) : @"Power readings updating…",
-             NSMakeRect(75, 78, width - 150, 19), 14, NSFontWeightSemibold,
-             NSColor.labelColor, NSTextAlignmentCenter);
-        Text(fromBattery ? @"Battery" : @"Adapter", NSMakeRect(24, 9, 50, 16),
-             10, NSFontWeightMedium, muted, NSTextAlignmentCenter);
-        Text(@"Mac", NSMakeRect(width - 74, 9, 50, 16),
-             10, NSFontWeightMedium, muted, NSTextAlignmentCenter);
-        if (adapter && !charging) {
-            Text(@"Battery idle", NSMakeRect(84, 9, width - 168, 17),
-                 10, NSFontWeightMedium, muted, NSTextAlignmentCenter);
-        }
+        [NSGraphicsContext restoreGraphicsState];
+        [mask appendBezierPath:track];
+    }
+    CGFloat lx = 32;
+    for (NSArray *item in segments) {
+        Symbol(item[3], NSMakeRect(lx, 14, 18, 16), 12, (NSColor *)item[2]);
+        NSMutableAttributedString *entry = [[[NSMutableAttributedString alloc] initWithString:[item[0] stringByAppendingString:@"  "]
+            attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:12 weight:NSFontWeightRegular],
+                         NSForegroundColorAttributeName:NSColor.secondaryLabelColor}] autorelease];
+        [entry appendAttributedString:[[[NSAttributedString alloc] initWithString:[NSString stringWithFormat:@"%.1f W", [item[1] doubleValue]]
+            attributes:@{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium],
+                         NSForegroundColorAttributeName:NSColor.labelColor}] autorelease]];
+        [entry drawAtPoint:NSMakePoint(lx + 24, 22 - entry.size.height / 2)];
+        lx += 24 + entry.size.width + 20;
+    }
+    if (adapter && !charging && !hybrid) {
+        NSDictionary *idle = @{NSFontAttributeName:[NSFont systemFontOfSize:12 weight:NSFontWeightRegular],
+                               NSForegroundColorAttributeName:NSColor.secondaryLabelColor};
+        NSSize size = [@"Battery idle" sizeWithAttributes:idle];
+        [@"Battery idle" drawAtPoint:NSMakePoint(width - 32 - size.width, 22 - size.height / 2) withAttributes:idle];
     }
     [self updateAnimationMask:mask];
 }
