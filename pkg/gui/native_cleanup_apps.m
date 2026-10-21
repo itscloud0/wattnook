@@ -70,9 +70,14 @@ char *WattInspectStorageApplication(const char *path) {
       [executable containsString:@"/"] || [executable isEqual:@".."] || [executable isEqual:@"."]) {close(contentsFD);return NULL;}
   int executableDir=openat(contentsFD,"MacOS",O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);close(contentsFD);
   if(executableDir<0)return StorageMetadataError();
-  int executableFD=openat(executableDir,executable.fileSystemRepresentation,O_RDONLY|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC);close(executableDir);
+  // The executable may be a symlink (a wrapper app pointing at a CLI, e.g.
+  // ~/.local/bin/claude): the identity still comes from Info.plist, so accept
+  // a link without following it; anything else must be a regular file.
+  struct stat linkStat;
+  BOOL symlinked=fstatat(executableDir,executable.fileSystemRepresentation,&linkStat,AT_SYMLINK_NOFOLLOW)==0 && S_ISLNK(linkStat.st_mode);
+  int executableFD=symlinked?-1:openat(executableDir,executable.fileSystemRepresentation,O_RDONLY|O_NONBLOCK|O_NOFOLLOW|O_CLOEXEC);close(executableDir);
   struct stat executableStat;
-  BOOL regular=executableFD>=0 && fstat(executableFD,&executableStat)==0 && S_ISREG(executableStat.st_mode);
+  BOOL regular=symlinked || (executableFD>=0 && fstat(executableFD,&executableStat)==0 && S_ISREG(executableStat.st_mode));
   if(executableFD>=0)close(executableFD);
   if(!regular)return StorageMetadataError();
   NSString *name=info[@"CFBundleDisplayName"] ?: info[@"CFBundleName"];

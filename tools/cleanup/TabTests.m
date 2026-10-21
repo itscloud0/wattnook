@@ -29,11 +29,8 @@ int main(int argc,const char **argv){@autoreleasepool{
  NSView *v=c.storageView;
  NSTableView *table=[v valueForKey:@"table"];
  NSButton *scan=[v valueForKey:@"scanButton"];
- NSButton *appsTab=[v valueForKey:@"applicationsTab"],*cachesTab=[v valueForKey:@"cachesTab"];
  assert([scan.title isEqual:@"Scan"]&&table.numberOfRows==0);
- assert(table.headerView==nil&&table.rowHeight==44);
- assert([appsTab.title isEqual:@"Applications"]&&[cachesTab.title isEqual:@"App caches"]);
- assert(NSWidth(appsTab.frame)==NSWidth(cachesTab.frame)&&NSMinX(appsTab.frame)==24&&NSMaxX(cachesTab.frame)==376);
+ assert(table.headerView==nil&&table.rowHeight==52);
  assert(FindButton(v,@"Review")==nil);
  NSString *directory=argc==2?[NSString stringWithUTF8String:argv[1]]:nil;
  NSWindow *host=[[[NSWindow alloc]initWithContentRect:dashboard.bounds styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO]autorelease];
@@ -42,12 +39,14 @@ int main(int argc,const char **argv){@autoreleasepool{
  [scan performClick:nil];assert(lastAction==2&&!scan.enabled);
  NSDictionary *identity=@{@"name":@"An application with a deliberately long but real-looking name",@"bundleID":@"test.one",@"path":@"/synthetic/Applications/One.app",@"running":@YES};
  NSDictionary *snapshot=@{@"state":@"partial",@"reason":@"Some folders were inaccessible",@"applications":@{@"entries":@[
-  @{@"identity":identity,@"size":@{@"bytes":@3000000000000ULL,@"complete":@YES},@"reason":@"Quit the application normally before removing it"},
+  @{@"identity":identity,@"size":@{@"bytes":@3000000000000ULL,@"complete":@YES},@"reason":@"Quit the application normally before removing it",
+   @"leftovers":@[@{@"path":@"/synthetic/Library/Caches/test.one",@"category":@"Caches",@"bytes":@1234000000,@"complete":@YES},
+                  @{@"path":@"/synthetic/Library/Application Support/One",@"category":@"Application Support",@"bytes":@1000,@"complete":@YES,@"suggested":@YES}]},
   @{@"identity":@{@"name":@"Second",@"bundleID":@"test.two",@"path":@"/synthetic/Applications/Two.app"},@"size":@{@"complete":@NO}}]},
   @"observations":@[@{@"path":@"/synthetic/Library/Caches/test.one",@"displayPath":@"/synthetic/Library/Caches/test.one",@"category":@"Application cache",@"bytes":@1234000000,@"complete":@YES}]};
  WattUpdateStorageReview(c,c.storageGeneration,snapshot);
  assert(table.numberOfRows==2&&table.selectedRow==-1&&scan.enabled);
- assert(NSWidth(v.bounds)==400&&NSHeight(v.bounds)==450&&NSMaxX(scan.frame)<=376);
+ assert(NSWidth(v.bounds)==400&&NSHeight(v.bounds)==450&&NSMaxX(scan.frame)<=384);
  [dashboard displayIfNeeded];Capture(dashboard,directory,@"applications.png");
  NSSearchField *search=[v valueForKey:@"searchField"];search.stringValue=@"second";
  [(id)v controlTextDidChange:[NSNotification notificationWithName:NSControlTextDidChangeNotification object:search]];
@@ -58,13 +57,14 @@ int main(int argc,const char **argv){@autoreleasepool{
  assert(table.action==@selector(review:)&&table.target==v);[table sendAction:table.action to:table.target];
  NSView *detail=[v valueForKey:@"detailView"];assert(!detail.hidden);
  NSTextField *path=[v valueForKey:@"pathLabel"];assert(path.selectable&&[path.stringValue isEqual:identity[@"path"]]);
- assert(FindButton(detail,@"Show in Finder")!=nil&&FindButton(detail,@"Move to Trash")==nil);
+ // Uninstaller: the bundle and its exact leftovers are checked, name-only matches are not;
+ // a running app cannot be moved.
+ NSArray *checks=[v valueForKey:@"checks"];assert(checks.count==3);
+ assert(((NSButton *)checks[0]).state==NSControlStateValueOn&&((NSButton *)checks[1]).state==NSControlStateValueOn&&((NSButton *)checks[2]).state==NSControlStateValueOff);
+ NSButton *trash=FindButton(detail,@"Move to Trash");assert(trash&&!trash.enabled);
+ assert(FindButton(detail,@"Show in Finder")!=nil);
  [dashboard displayIfNeeded];Capture(dashboard,directory,@"detail.png");
  [FindButton(detail,@"Back") performClick:nil];assert(detail.hidden&&table.selectedRow==-1);
- [cachesTab performClick:nil];assert(table.numberOfRows==1);
- [table selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];[table sendAction:table.action to:table.target];
- assert([path.stringValue isEqual:@"/synthetic/Library/Caches/test.one"]);
- [dashboard displayIfNeeded];Capture(dashboard,directory,@"cache-detail.png");
  WattUpdateStorageReview(c,c.storageGeneration,@{@"state":@"error",@"reason":@"Permission denied"});
  assert(detail.hidden&&table.numberOfRows==0);
  assert([((NSTextField *)[v valueForKey:@"statusLabel"]).stringValue containsString:@"Permission denied"]);

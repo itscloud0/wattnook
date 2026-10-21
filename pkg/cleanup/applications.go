@@ -31,6 +31,9 @@ type AppEntry struct {
 	Size     Observation `json:"size"`
 	Eligible bool        `json:"eligible"`
 	Reason   string      `json:"reason,omitempty"`
+	// Leftovers are the application's files in ~/Library, found by exact bundle
+	// identifier (preselectable) or by exact name (Suggested, review only).
+	Leftovers []Observation `json:"leftovers,omitempty"`
 }
 type AppInventory struct {
 	Entries []AppEntry `json:"entries"`
@@ -303,6 +306,28 @@ func scanApplicationStorage(ctx context.Context, home string, roots []string, li
 			inventory.Partial = true
 		}
 		w.report.Observations = append(w.report.Observations, observation)
+	}
+	for i := range inventory.Entries {
+		entry := &inventory.Entries[i]
+		if !ownershipKnown || !uniqueBundleID(apps, entry.Identity.BundleID) || !validLeftoverName(entry.Identity.BundleID) {
+			continue
+		}
+		for _, candidate := range leftoverCandidates(home, entry.Identity) {
+			var st unix.Stat_t
+			if unix.Lstat(candidate.path, &st) != nil || st.Mode&unix.S_IFMT == unix.S_IFLNK {
+				continue
+			}
+			var o Observation
+			if st.Mode&unix.S_IFMT == unix.S_IFDIR {
+				o = measure(candidate.path, candidate.category, nil)
+			} else if st.Mode&unix.S_IFMT == unix.S_IFREG {
+				o = Observation{Path: candidate.path, DisplayPath: candidate.path, Category: candidate.category, Bytes: uint64(st.Size), Complete: true}
+			} else {
+				continue
+			}
+			o.Suggested = candidate.suggested
+			entry.Leftovers = append(entry.Leftovers, o)
+		}
 	}
 	w.report.Applications = &inventory
 	if inventory.Partial || w.stop != "" {

@@ -87,7 +87,7 @@ SF Pro throughout. The charge is 66 pt Light; System headline values 22 pt Semib
 
 **System:** memory pressure and History on the ground; one tile with CPU / Memory / Disk readings and their context row; "Top consumers" and its underlined CPU / Memory / Disk sort in one row; one tile with six consumer rows; Open Activity Monitor.
 
-**Storage:** category segments, search and Scan on the ground; the results list on one tile.
+**Storage:** search and Scan on one row; the total ("41 GB in 37 apps") and a status line; one group listing apps by total size (app plus leftovers), each row with icon, name, "App 1.2 GB, leftovers 340 MB" and the total. An app opens its uninstaller: icon, name, path, "N selected", a checklist of the bundle and every leftover with path and size (exact bundle-identifier matches checked, same-name matches unchecked and labelled), Show in Finder and Move to Trash (second click confirms with the item count). Removal revalidates identity, refuses running apps and only ever uses the Trash.
 
 **Settings:** headings on the ground, each group (Appearance, Menu bar, Monitoring) on its own tile, then Keep Awake details and Advanced controls side by side.
 

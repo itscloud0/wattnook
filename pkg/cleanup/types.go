@@ -1,5 +1,6 @@
 // Package cleanup implements read-only, bounded storage observations. It has no
-// removal operations and does not determine whether data is disposable.
+// removal operations and does not determine whether data is disposable; the
+// GUI moves items the user selects to the Trash after revalidating them.
 package cleanup
 
 import (
@@ -37,6 +38,9 @@ type Observation struct {
 	Complete    bool   `json:"complete"`
 	Skipped     uint64 `json:"skipped"`
 	Errors      uint64 `json:"errors"`
+	// Suggested marks a leftover matched only by the application's name, not
+	// its bundle identifier: shown for review, never preselected.
+	Suggested bool `json:"suggested,omitempty"`
 }
 type RootStatus struct {
 	Path   string `json:"path"`
