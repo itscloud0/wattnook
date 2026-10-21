@@ -103,9 +103,9 @@ The forecast's hourly row, for power: 90 bars, one per 10 s of Mac draw (15 minu
 
 ### Power flow
 
-AlDente-style Sankey across the full 368 pt width and 124 pt height, no group behind it: full-height rounded blocks (64 pt, 12 pt corners, the group grey) for the single side, two blocks split by share (6 pt apart, 36 pt minimum) for the other, bands as thick as their share of the watts with the watts inside (14 pt semibold). Charging: adapter block with its total, bands to Battery (green, 38%) and Mac (palette accent, 30%). Adapter can't keep up: Adapter (accent) and Battery (orange, 38%) bands into the Mac block with its total. One source: a single accent band with its watts and "Battery idle" when the battery is held. The travelling highlight runs inside the bands only.
+AlDente's diagram, matched against all four of its published states (charging, limit reached, discharging, underpowered charger): one 368 × 124 pt silhouette whose outer corners alone are rounded (14 pt); 52 pt end blocks in the group grey, square on the inside and split from the bands by a 4 pt groove; the split side's two blocks 6 pt apart. Bands are neutral (#343437), as thick as their share of the watts, with the watts inside (14 pt semibold, two decimals). The single side carries the total under its icon. Colour: the Mac icon in the palette accent; the battery icon gains a bolt while charging; only the underpowered case (adapter and battery together) fades the bands from neutral into the accent toward the Mac. The travelling highlight runs inside the bands only.
 
-Icons are one family: SF Symbols at 18 pt, white (bolt, a battery at the real charge level, laptop). No raster artwork, no chips beyond the blocks themselves.
+Icons are one family: SF Symbols at 18 pt (bolt, battery with level or bolt, laptop). No raster artwork.
 
 ### Charge action
 

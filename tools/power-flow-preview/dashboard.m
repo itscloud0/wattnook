@@ -715,7 +715,7 @@ int main(int argc, const char *argv[]) {
                     CGFloat center = NSMidX(c.powerFlowView.bounds);
                     // The highlight runs inside the bands and never over the end blocks.
                     assert(CGPathContainsPoint(outline, NULL, CGPointMake(center, 62), NO));
-                    assert(!CGPathContainsPoint(outline, NULL, CGPointMake(40, 62), NO));
+                    assert(!CGPathContainsPoint(outline, NULL, CGPointMake(36, 62), NO));
                 }
                 if (merge) break;
             }

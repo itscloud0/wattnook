@@ -433,22 +433,42 @@ static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRe
         return;
     }
 
-    // AlDente-style flow: full-height source and destination blocks, bands as
-    // thick as their share of the watts, the numbers inside the bands. One
-    // icon family (SF Symbols, one size, white); colour only on the bands.
+    // AlDente's flow, read from its four reference states: one silhouette whose
+    // outer corners alone are rounded, end blocks split from the bands by a
+    // 4 pt groove, neutral bands as thick as their watts with the watts inside,
+    // colour only when the battery helps an adapter that can't keep up.
     (void)dark;
     BOOL fromBattery = !adapter;
     NSInteger level = self.chargePercent < 0 ? 100 : self.chargePercent;
-    NSString *battery = level >= 88 ? @"battery.100percent" : level >= 63 ? @"battery.75percent" :
-        level >= 38 ? @"battery.50percent" : level >= 13 ? @"battery.25percent" : @"battery.0percent";
-    const CGFloat top = 124, nodeW = 64, gap = 4, split = 6;
-    CGFloat leftX = 16, rightX = width - 16 - nodeW, bandL = leftX + nodeW + gap, bandR = rightX - gap;
+    NSString *battery = charging ? @"battery.100percent.bolt" :
+        (level >= 88 ? @"battery.100percent" : level >= 63 ? @"battery.75percent" :
+         level >= 38 ? @"battery.50percent" : level >= 13 ? @"battery.25percent" : @"battery.0percent");
+    const CGFloat top = 124, nodeW = 52, groove = 4, split = 6, radius = 14;
+    CGFloat leftX = 16, rightX = width - 16 - nodeW, bandL = leftX + nodeW + groove, bandR = rightX - groove;
     NSColor *nodeColor = WattTileColor(NO);
+    NSColor *bandColor = [NSColor colorWithSRGBRed:0x34/255.0 green:0x34/255.0 blue:0x37/255.0 alpha:1];
     NSBezierPath *mask = [NSBezierPath bezierPath];
-    // A Sankey band from a left y-range to a right y-range.
+    // Only the corners on the diagram's outside are rounded.
+    NSBezierPath *(^block)(NSRect, BOOL, BOOL, BOOL) = ^(NSRect r, BOOL outerLeft, BOOL roundTop, BOOL roundBottom) {
+        NSBezierPath *path = [NSBezierPath bezierPath];
+        CGFloat x0 = NSMinX(r), x1 = NSMaxX(r), y0 = NSMinY(r), y1 = NSMaxY(r);
+        CGFloat tl = outerLeft && roundTop ? radius : 0, bl = outerLeft && roundBottom ? radius : 0;
+        CGFloat tr = !outerLeft && roundTop ? radius : 0, br = !outerLeft && roundBottom ? radius : 0;
+        [path moveToPoint:NSMakePoint(x0 + bl, y0)];
+        [path lineToPoint:NSMakePoint(x1 - br, y0)];
+        if (br) [path appendBezierPathWithArcFromPoint:NSMakePoint(x1, y0) toPoint:NSMakePoint(x1, y0 + br) radius:br];
+        [path lineToPoint:NSMakePoint(x1, y1 - tr)];
+        if (tr) [path appendBezierPathWithArcFromPoint:NSMakePoint(x1, y1) toPoint:NSMakePoint(x1 - tr, y1) radius:tr];
+        [path lineToPoint:NSMakePoint(x0 + tl, y1)];
+        if (tl) [path appendBezierPathWithArcFromPoint:NSMakePoint(x0, y1) toPoint:NSMakePoint(x0, y1 - tl) radius:tl];
+        [path lineToPoint:NSMakePoint(x0, y0 + bl)];
+        if (bl) [path appendBezierPathWithArcFromPoint:NSMakePoint(x0, y0) toPoint:NSMakePoint(x0 + bl, y0) radius:bl];
+        [path closePath];
+        return path;
+    };
     NSBezierPath *(^band)(CGFloat, CGFloat, CGFloat, CGFloat) = ^(CGFloat l0, CGFloat l1, CGFloat r0, CGFloat r1) {
         NSBezierPath *path = [NSBezierPath bezierPath];
-        CGFloat k = (bandR - bandL) * 0.45;
+        CGFloat k = (bandR - bandL) * 0.5;
         [path moveToPoint:NSMakePoint(bandL, l1)];
         [path curveToPoint:NSMakePoint(bandR, r1) controlPoint1:NSMakePoint(bandL + k, l1) controlPoint2:NSMakePoint(bandR - k, r1)];
         [path lineToPoint:NSMakePoint(bandR, r0)];
@@ -456,67 +476,70 @@ static void TemperatureLine(NSString *name, double celsius, NSColor *color, NSRe
         [path closePath];
         return path;
     };
-    void (^node)(NSRect, NSString *, NSString *) = ^(NSRect rect, NSString *icon, NSString *value) {
-        [nodeColor setFill];
-        [[NSBezierPath bezierPathWithRoundedRect:rect xRadius:12 yRadius:12] fill];
-        CGFloat iconY = value ? NSMidY(rect) + 2 : NSMidY(rect) - 11;
-        Symbol(icon, NSMakeRect(NSMidX(rect) - 14, iconY, 28, 22), 18, NSColor.labelColor);
-        if (value) Text(value, NSMakeRect(NSMinX(rect), NSMidY(rect) - 20, NSWidth(rect), 18), 13,
+    // An end block: grey, its icon, and the total when it is the single side.
+    void (^node)(NSRect, BOOL, BOOL, BOOL, NSString *, NSColor *, NSString *) =
+        ^(NSRect r, BOOL outerLeft, BOOL roundTop, BOOL roundBottom, NSString *icon, NSColor *tint, NSString *value) {
+        [nodeColor setFill]; [block(r, outerLeft, roundTop, roundBottom) fill];
+        CGFloat iconY = value ? NSMidY(r) + 1 : NSMidY(r) - 11;
+        Symbol(icon, NSMakeRect(NSMidX(r) - 14, iconY, 28, 22), 18, tint);
+        if (value) Text(value, NSMakeRect(NSMinX(r), NSMidY(r) - 21, NSWidth(r), 18), 13,
                         NSFontWeightMedium, NSColor.labelColor, NSTextAlignmentCenter);
     };
+    void (^fillBand)(NSBezierPath *, BOOL) = ^(NSBezierPath *path, BOOL towardsMac) {
+        if (towardsMac) {
+            // The weak-adapter case: neutral fading into the accent at the Mac.
+            NSGradient *g = [[[NSGradient alloc] initWithStartingColor:bandColor
+                endingColor:[WattAccentColor() colorWithAlphaComponent:0.75]] autorelease];
+            [g drawInBezierPath:path angle:0];
+        } else {
+            [bandColor setFill]; [path fill];
+        }
+    };
     void (^label)(double, CGFloat, CGFloat) = ^(double watts, CGFloat y0, CGFloat y1) {
-        if (y1 - y0 < 16) return;
-        Text([NSString stringWithFormat:@"%.1f W", watts], NSMakeRect(bandL, (y0 + y1) / 2 - 9, bandR - bandL, 18),
+        if (y1 - y0 < 18) return;
+        Text([NSString stringWithFormat:@"%.2f W", watts], NSMakeRect(bandL, (y0 + y1) / 2 - 9, bandR - bandL, 18),
              14, NSFontWeightSemibold, NSColor.labelColor, NSTextAlignmentCenter);
     };
-    NSString *(^watts)(double) = ^NSString *(double w) { return [NSString stringWithFormat:@"%.0f W", MAX(0, w)]; };
+    NSString *(^total)(double) = ^NSString *(double w) { return [NSString stringWithFormat:@"%.0fW", MAX(0, w)]; };
+    NSColor *macTint = WattAccentColor();
     if ((adapter && charging) || hybrid) {
-        // One side is a single block, the other two blocks split by share.
         double a = adapter && charging ? self.batteryWatts : self.adapterWatts;   // upper stream
         double b = adapter && charging ? self.systemWatts : -self.batteryWatts;   // lower stream
         double sum = MAX(0.1, a + b);
-        CGFloat usable = top - split, upper = MAX(36, MIN(usable - 36, usable * a / sum));
+        CGFloat usable = top - split, upper = MAX(40, MIN(usable - 40, usable * a / sum));
         NSRect upperNode = NSMakeRect(0, top - upper, nodeW, upper), lowerNode = NSMakeRect(0, 0, nodeW, usable - upper);
-        CGFloat seam = top * b / sum; // where the streams meet on the single side
-        NSColor *upperColor = adapter && charging ? NSColor.systemGreenColor : WattAccentColor();
-        NSColor *lowerColor = adapter && charging ? WattAccentColor() : NSColor.systemOrangeColor;
+        CGFloat seam = top * b / sum;
         NSBezierPath *upperBand, *lowerBand;
         if (adapter && charging) {
             upperNode.origin.x = lowerNode.origin.x = rightX;
             upperBand = band(seam, top, NSMinY(upperNode), NSMaxY(upperNode));
             lowerBand = band(0, seam, NSMinY(lowerNode), NSMaxY(lowerNode));
-            node(NSMakeRect(leftX, 0, nodeW, top), @"bolt.fill", watts(self.adapterWatts));
-            node(upperNode, battery, nil);
-            node(lowerNode, @"laptopcomputer", nil);
+            node(NSMakeRect(leftX, 0, nodeW, top), YES, YES, YES, @"bolt.fill", NSColor.labelColor, total(self.adapterWatts));
+            node(upperNode, NO, YES, YES, battery, NSColor.labelColor, nil);
+            node(lowerNode, NO, YES, YES, @"laptopcomputer", macTint, nil);
+            fillBand(upperBand, NO); fillBand(lowerBand, NO);
         } else {
             upperNode.origin.x = lowerNode.origin.x = leftX;
             upperBand = band(NSMinY(upperNode), NSMaxY(upperNode), seam, top);
             lowerBand = band(NSMinY(lowerNode), NSMaxY(lowerNode), 0, seam);
-            node(upperNode, @"bolt.fill", nil);
-            node(lowerNode, battery, nil);
-            node(NSMakeRect(rightX, 0, nodeW, top), @"laptopcomputer", watts(self.systemWatts));
+            node(upperNode, YES, YES, YES, @"bolt.fill", NSColor.labelColor, nil);
+            node(lowerNode, YES, YES, YES, battery, NSColor.labelColor, nil);
+            node(NSMakeRect(rightX, 0, nodeW, top), NO, YES, YES, @"laptopcomputer", macTint, total(self.systemWatts));
+            fillBand(upperBand, YES); fillBand(lowerBand, YES);
         }
-        // Calm bands: green into the battery, orange out of it, a quiet tint of
-        // the palette for the adapter powering the Mac.
-        [[upperColor colorWithAlphaComponent:upperColor == NSColor.systemGreenColor ? 0.38 : 0.30] setFill]; [upperBand fill];
-        [[lowerColor colorWithAlphaComponent:lowerColor == NSColor.systemOrangeColor ? 0.38 : 0.30] setFill]; [lowerBand fill];
         [mask appendBezierPath:upperBand]; [mask appendBezierPath:lowerBand];
-        label(a, adapter && charging ? NSMinY(upperNode) : NSMinY(upperNode), NSMaxY(upperNode));
+        label(a, NSMinY(upperNode), NSMaxY(upperNode));
         label(b, NSMinY(lowerNode), NSMaxY(lowerNode));
     } else {
         double w = fromBattery ? -self.batteryWatts : self.adapterWatts;
-        node(NSMakeRect(leftX, 0, nodeW, top), fromBattery ? battery : @"bolt.fill", nil);
-        node(NSMakeRect(rightX, 0, nodeW, top), @"laptopcomputer", nil);
+        node(NSMakeRect(leftX, 0, nodeW, top), YES, YES, YES, fromBattery ? battery : @"bolt.fill", NSColor.labelColor, nil);
+        node(NSMakeRect(rightX, 0, nodeW, top), NO, YES, YES, @"laptopcomputer", macTint, nil);
         NSBezierPath *only = band(0, top, 0, top);
-        // One source is the normal case either way; orange is kept for the
-        // battery helping an adapter that can't keep up.
-        [[WattAccentColor() colorWithAlphaComponent:w > 0.25 ? 0.30 : 0.12] setFill]; [only fill];
+        fillBand(only, NO);
         if (w > 0.25) [mask appendBezierPath:only];
-        Text(w > 0.25 ? [NSString stringWithFormat:@"%.1f W", w] : @"Waiting for a reading",
-             NSMakeRect(bandL, top / 2 + 2, bandR - bandL, 20), 15, NSFontWeightSemibold, NSColor.labelColor, NSTextAlignmentCenter);
-        if (adapter && !charging)
-            Text(@"Battery idle", NSMakeRect(bandL, top / 2 - 20, bandR - bandL, 16), 11,
-                 NSFontWeightMedium, NSColor.secondaryLabelColor, NSTextAlignmentCenter);
+        Text(w > 0.25 ? [NSString stringWithFormat:@"%.2f W", w] : @"Waiting for a reading",
+             NSMakeRect(bandL, top / 2 - 9, bandR - bandL, 18), 14, NSFontWeightSemibold,
+             w > 0.25 ? NSColor.labelColor : NSColor.secondaryLabelColor, NSTextAlignmentCenter);
     }
     [self updateAnimationMask:mask];
 }
