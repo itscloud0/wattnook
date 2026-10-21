@@ -180,6 +180,10 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     // makes the rail first responder without asking for a ring.
     BOOL _keyboardFocus;
     NSRect _healthTipRect;
+    double _macSamples[90];
+    unsigned char _sampleStates[90];
+    NSInteger _sampleCount;
+    NSTimeInterval _lastSample;
     BOOL _limitMoved;
     NSPoint _limitDragStart;
     CAGradientLayer *_flowHighlight;
@@ -325,6 +329,27 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     if (_limitMoved) [self commitPreview];
 }
 
+- (void)recordMacWatts:(double)watts charging:(BOOL)charging heat:(BOOL)heat onBattery:(BOOL)onBattery {
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    if (!isfinite(watts) || watts < 0 || (_sampleCount && now - _lastSample < 10)) return;
+    _lastSample = now;
+    if (_sampleCount == 90) {
+        memmove(_macSamples, _macSamples + 1, sizeof(double) * 89);
+        memmove(_sampleStates, _sampleStates + 1, 89);
+        _sampleCount = 89;
+    }
+    _macSamples[_sampleCount] = watts;
+    _sampleStates[_sampleCount] = heat ? 2 : (charging ? 1 : (onBattery ? 3 : 0));
+    _sampleCount++;
+    self.stripView.needsDisplay = YES;
+}
+- (NSInteger)powerSampleCount { return _sampleCount; }
+- (double)powerSampleAt:(NSInteger)index state:(NSInteger *)state {
+    if (index < 0 || index >= _sampleCount) return NAN;
+    if (state) *state = _sampleStates[index];
+    return _macSamples[index];
+}
+
 - (NSString *)view:(NSView *)view stringForToolTip:(NSToolTipTag)tag point:(NSPoint)point userData:(void *)data {
     (void)view; (void)tag; (void)point; (void)data;
     NSString *cycles = self.cycleCount >= 0 ?
@@ -405,12 +430,14 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     NSString *chargeText = self.chargePercent < 0 ? @"—%" :
         [NSString stringWithFormat:@"%ld%%", (long)charge];
 
-    Text(chargeText, NSMakeRect(24, 158, 145, 60), 48, NSFontWeightSemibold,
+    // A forecast's temperature: one light numeral, far larger than anything else.
+    Text(chargeText, NSMakeRect(20, 152, 240, 80), 66, NSFontWeightLight,
          NSColor.labelColor, NSTextAlignmentLeft);
     // Orange marks the heat pause on the state line only; temperatures stay
     // neutral unless the CPU itself runs hot.
     Text(state, NSMakeRect(24, 142, 250, 18), 13, NSFontWeightRegular,
-         self.heatPaused && self.pluggedIn ? NSColor.systemOrangeColor : NSColor.secondaryLabelColor,
+         // The sunset sky already says "heat"; the line stays white to read on it.
+         self.heatPaused && self.pluggedIn ? NSColor.labelColor : NSColor.secondaryLabelColor,
          NSTextAlignmentLeft);
     // Battery and processor temperatures side by side: Heat Protection acts
     // on the battery, while a hot fanless Mac is usually the processor.
@@ -420,21 +447,21 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     BOOL showCPU = self.processorTemperatureCelsius > 0;
     BOOL showHealth = self.healthPercent > 0;
     NSInteger lines = (self.temperatureCelsius > 0) + showCPU + showHealth;
-    CGFloat lineY = lines >= 3 ? 196 : (lines == 2 ? 186 : 174);
+    CGFloat lineY = lines >= 3 ? 204 : (lines == 2 ? 194 : 184);
     if (self.temperatureCelsius > 0) {
         TemperatureLine(@"Battery", self.temperatureCelsius, NSColor.labelColor,
             NSMakeRect(right - 150, lineY, 146, 20), headerMuted);
         lineY -= lines >= 3 ? 20 : 22;
     }
     if (showCPU) {
-        NSColor *color = self.processorTemperatureCelsius >= 85 ? NSColor.systemOrangeColor : NSColor.labelColor;
+        NSColor *color = self.processorTemperatureCelsius >= 85 ? WattWarningColor() : NSColor.labelColor;
         TemperatureLine(@"CPU", self.processorTemperatureCelsius, color,
             NSMakeRect(right - 150, lineY, 146, 20), headerMuted);
         lineY -= lines >= 3 ? 20 : 22;
     }
     if (showHealth) {
         // Apple calls under 80% "Service Recommended"; only then is it a warning.
-        NSColor *color = self.healthPercent < 80 ? NSColor.systemOrangeColor : NSColor.labelColor;
+        NSColor *color = self.healthPercent < 80 ? WattWarningColor() : NSColor.labelColor;
         NSRect healthRect = NSMakeRect(right - 150, lineY, 146, 20);
         ReadingLine(@"Health", [NSString stringWithFormat:@"%ld%%", (long)self.healthPercent], color,
             healthRect, headerMuted);
@@ -452,7 +479,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     [[NSBezierPath bezierPathWithRoundedRect:rail xRadius:3 yRadius:3] fill];
     if (self.chargePercent >= 0 && charge > 0) {
         NSColor *fillColor = statusCharging ? NSColor.systemGreenColor :
-            (charge <= 20 ? NSColor.systemOrangeColor : WattAccentColor());
+            (charge <= 20 ? WattWarningColor() : WattAccentColor());
         [fillColor setFill];
         NSRect fill = rail;
         fill.size.width = MAX(6, rail.size.width * charge / 100.0);
@@ -552,4 +579,51 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     [self updateAnimationMask:mask];
 }
 
+@end
+
+
+// An hourly-forecast strip for power: one bar per 10 s of Mac draw, coloured
+// by what the battery was doing (green charging, orange heat pause, grey held
+// or on battery). Empty slots stay as a faint baseline, never invented bars.
+@implementation WattPowerStripView
+- (BOOL)isFlipped { return NO; }
+- (void)drawRect:(NSRect)rect {
+    (void)rect;
+    BattPowerFlowView *flow = self.source;
+    NSInteger count = flow.powerSampleCount;
+    NSColor *muted = [NSColor.whiteColor colorWithAlphaComponent:0.68];
+    CGFloat width = NSWidth(self.bounds);
+    double peak = 0, sum = 0;
+    for (NSInteger i = 0; i < count; i++) { double w = [flow powerSampleAt:i state:NULL]; peak = MAX(peak, w); sum += w; }
+    NSDictionary *label = @{NSFontAttributeName:[NSFont systemFontOfSize:11 weight:NSFontWeightMedium],
+                            NSForegroundColorAttributeName:muted};
+    [@"Mac power · last 15 min" drawAtPoint:NSMakePoint(0, NSHeight(self.bounds) - 15) withAttributes:label];
+    NSString *summary = count ? [NSString stringWithFormat:@"avg %.1f W · peak %.1f W", sum / count, peak] :
+        @"First bar in 10 s";
+    NSDictionary *figure = @{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightMedium],
+                             NSForegroundColorAttributeName:NSColor.whiteColor};
+    NSSize size = [summary sizeWithAttributes:figure];
+    [summary drawAtPoint:NSMakePoint(width - size.width, NSHeight(self.bounds) - 15) withAttributes:figure];
+    CGFloat chartHeight = NSHeight(self.bounds) - 22, slot = width / 90.0, bar = MAX(1.5, slot - 1.2);
+    double scale = MAX(peak, 5);
+    for (NSInteger i = 0; i < 90; i++) {
+        NSInteger sample = i - (90 - count);
+        CGFloat x = i * slot;
+        if (sample < 0) {
+            [[NSColor.whiteColor colorWithAlphaComponent:0.10] setFill];
+            NSRectFill(NSMakeRect(x, 0, bar, 2));
+            continue;
+        }
+        NSInteger state = 0;
+        double w = [flow powerSampleAt:sample state:&state];
+        NSColor *color = state == 1 ? NSColor.systemGreenColor : state == 2 ? WattWarningColor() :
+            [NSColor.whiteColor colorWithAlphaComponent:0.78];
+        [color setFill];
+        CGFloat h = MAX(2, chartHeight * w / scale);
+        [[NSBezierPath bezierPathWithRoundedRect:NSMakeRect(x, 0, bar, h) xRadius:MIN(1, bar / 2) yRadius:MIN(1, bar / 2)] fill];
+    }
+}
+- (NSString *)accessibilityLabel {
+    return @"Mac power over the last 15 minutes";
+}
 @end

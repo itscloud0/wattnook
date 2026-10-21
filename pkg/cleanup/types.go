@@ -19,6 +19,12 @@ type Limits struct {
 
 func DefaultLimits() Limits { return Limits{30 * time.Second, 100000, 32, 200} }
 
+// ApplicationLimits bounds the Storage tab's application measurement. App
+// bundles are file-heavy (one Mac had 238,000 entries under /Applications,
+// walked by find in half a second), so the 100,000-entry cache budget left
+// most apps unmeasured.
+func ApplicationLimits() Limits { return Limits{30 * time.Second, 2000000, 32, 200} }
+
 type Progress struct {
 	Visited uint64 `json:"visited"`
 }

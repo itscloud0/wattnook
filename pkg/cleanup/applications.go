@@ -211,7 +211,7 @@ func scanApplicationStorage(ctx context.Context, home string, roots []string, li
 	if invalid {
 		return Report{State: "error", Reason: "Invalid application scan options", StartedAt: start, FinishedAt: time.Now()}
 	}
-	d := DefaultLimits()
+	d := ApplicationLimits()
 	if limits.Timeout == 0 {
 		limits.Timeout = d.Timeout
 	}

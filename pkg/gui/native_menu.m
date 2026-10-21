@@ -322,7 +322,8 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
 // One contextual button: Discharge when the charge is above the limit (or
 // already discharging), Top Up otherwise. Its tag holds the shown action.
 - (void)chargeActionFromPopover:(NSButton *)sender {
-    BattMenuItem item = sender.tag == BattItemDischargeToLimit ? BattItemDischargeToLimit : BattItemTopUp;
+    BattMenuItem item = sender.tag == BattItemDischargeToLimit || sender.tag == BattItemUpgrade ||
+        sender.tag == BattItemInstall ? (BattMenuItem)sender.tag : BattItemTopUp;
     battMenuAction(_handle, item, NO);
 }
 
@@ -670,6 +671,8 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
         summary = [NSString stringWithFormat:@"%.1f W powering the Mac", system];
     }
     [self item:BattItemPowerFlowSummary].title = summary;
+    if (!inconsistent)
+        [self.powerFlowView recordMacWatts:system charging:battery > 0.25 heat:heatPaused onBattery:adapter <= 0.1];
     self.powerFlowView.accessibilityLabel = summary;
     if (heatPaused && adapter > 0.1) {
         [self item:BattItemPowerBattery].title = [NSString stringWithFormat:@"Battery held: %.1f°C", temperature];

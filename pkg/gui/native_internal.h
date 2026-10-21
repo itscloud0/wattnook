@@ -37,7 +37,13 @@ enum { WattHistoryCapacity = 90 };
 @property(nonatomic, retain) WattMetricHistory *history;
 @end
 
+@class WattPowerStripView;
 @interface BattPowerFlowView : NSView
+// The last 15 minutes of Mac power, one sample per 10 s (90 at most).
+@property(nonatomic, assign) WattPowerStripView *stripView;
+- (void)recordMacWatts:(double)watts charging:(BOOL)charging heat:(BOOL)heat onBattery:(BOOL)onBattery;
+- (NSInteger)powerSampleCount;
+- (double)powerSampleAt:(NSInteger)index state:(NSInteger *)state;
 @property(nonatomic, assign) double adapterWatts;
 @property(nonatomic, assign) double systemWatts;
 @property(nonatomic, assign) double batteryWatts;
@@ -202,6 +208,19 @@ void WattSetButtonPlain(NSButton *button, BOOL plain);
 void WattSetButtonGrouped(NSButton *button, BOOL grouped);
 void BattRecyclePopover(BattMenuController *controller);
 NSColor *WattSurfaceColor(BOOL lighter);
+// The popover's ground is a sky whose colour is the power state.
+typedef NS_ENUM(NSInteger, WattSky) {
+    WattSkyUnknown, WattSkyCharging, WattSkyHeld, WattSkyHeat, WattSkyBattery, WattSkyDischarge,
+};
+NSGradient *WattSkyGradient(WattSky sky);
+// The 15-minute Mac-power strip, drawn from BattPowerFlowView's samples.
+@interface WattPowerStripView : NSView
+@property(nonatomic, assign) BattPowerFlowView *source;
+@end
+// Tiles sit on the sky as translucent white, one tone step, no border.
+NSColor *WattTileColor(BOOL highlighted);
+// Warnings in light amber: legible on every sky, including the sunset.
+NSColor *WattWarningColor(void);
 NSArray *WattMenuMetrics(void);
 BOOL WattMenuBatteryIcon(void);
 double BattCounterRate(uint64_t previous, uint64_t current, double elapsed);
