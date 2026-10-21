@@ -182,6 +182,7 @@ enum { WattHistoryCapacity = 90 };
 void WattShowStorageReview(BattMenuController *controller);
 NSView *WattCreateStorageReview(BattMenuController *controller);
 void WattSetStorageReviewActive(BattMenuController *controller, BOOL active);
+void WattCloseStorageReview(BattMenuController *controller);
 void BattShowStoragePage(BattMenuController *controller);
 void WattUpdateStorageReview(BattMenuController *controller, uint64_t generation, NSDictionary *snapshot);
 

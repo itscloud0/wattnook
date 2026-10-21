@@ -795,9 +795,10 @@ static void Redisplay(NSView *view) {
     }
     // A helper from another version hides the charging controls; say so in
     // place of the charge action instead of leaving them silently missing.
-    BOOL helperAction = ![c item:BattItemUpgrade].hidden || ![c item:BattItemInstall].hidden;
+    NSMenuItem *upgradeItem = [c item:BattItemUpgrade], *installItem = [c item:BattItemInstall];
+    BOOL helperAction = (upgradeItem && !upgradeItem.hidden) || (installItem && !installItem.hidden);
     if (helperAction) {
-        BOOL install = ![c item:BattItemInstall].hidden;
+        BOOL install = installItem && !installItem.hidden;
         _topUpButton.hidden = NO; _topUpButton.selected = NO;
         _topUpButton.tag = install ? BattItemInstall : BattItemUpgrade;
         _topUpButton.title = install ? @"Install Helper…" : @"Update Helper…";

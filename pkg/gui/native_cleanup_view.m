@@ -36,11 +36,13 @@ static NSView *StorageTile(NSView *parent,NSRect frame) {
  uint64_t _generation;
  BOOL _running,_active,_confirming;
 }
-@property(nonatomic,retain) NSView *listView,*detailView,*componentsView;
-@property(nonatomic,retain) NSButton *scanButton,*trashButton;
+@property(nonatomic,retain) NSView *listView,*detailView,*componentsView,*stateView;
+@property(nonatomic,retain) NSButton *scanButton,*trashButton,*stateButton;
 @property(nonatomic,retain) NSSearchField *searchField;
 @property(nonatomic,retain) NSTableView *table;
-@property(nonatomic,retain) NSProgressIndicator *spinner;
+@property(nonatomic,retain) NSProgressIndicator *progressBar;
+@property(nonatomic,retain) NSImageView *stateIcon;
+@property(nonatomic,retain) NSTextField *stateTitle,*stateText;
 @property(nonatomic,retain) NSTextField *totalLabel,*statusLabel,*emptyLabel,*pathLabel,*detailTitle,*detailSize,*detailReason;
 @property(nonatomic,retain) NSImageView *detailIcon;
 @property(nonatomic,copy) NSArray *applications,*rows,*components;
@@ -48,6 +50,7 @@ static NSView *StorageTile(NSView *parent,NSRect frame) {
 @property(nonatomic,copy) NSDictionary *selectedItem;
 - (instancetype)initWithOwner:(BattMenuController *)owner;
 - (void)setActive:(BOOL)active;
+- (void)shutdown;
 - (void)update:(NSDictionary *)snapshot;
 @end
 
@@ -77,11 +80,23 @@ static NSView *StorageTile(NSView *parent,NSRect frame) {
  _table.columnAutoresizingStyle=NSTableViewLastColumnOnlyAutoresizingStyle;
  _table.target=self;_table.action=@selector(review:);_table.selectionHighlightStyle=NSTableViewSelectionHighlightStyleNone;
  scroll.documentView=_table;[_listView addSubview:scroll];
- self.spinner=[[[NSProgressIndicator alloc]initWithFrame:NSMakeRect(192,236,16,16)]autorelease];
- _spinner.style=NSProgressIndicatorStyleSpinning;_spinner.controlSize=NSControlSizeSmall;_spinner.displayedWhenStopped=NO;
- [_listView addSubview:_spinner];
- self.emptyLabel=StorageLabel(_listView,NSMakeRect(48,170,304,58),@"Each app with its caches, settings and other leftovers.\nChoose Scan to start.",13,NO);
- _emptyLabel.alignment=NSTextAlignmentCenter;_emptyLabel.maximumNumberOfLines=3;
+ self.emptyLabel=StorageLabel(_listView,NSMakeRect(48,170,304,40),@"No matching applications.\nTry another name.",13,NO);
+ _emptyLabel.alignment=NSTextAlignmentCenter;_emptyLabel.maximumNumberOfLines=2;_emptyLabel.hidden=YES;
+
+ // Before the first result (and while a scan runs) one tile owns the page:
+ // what Storage does, the live count, and the one action.
+ self.stateView=StorageTile(self,NSMakeRect(16,8,368,432));
+ self.stateIcon=[[[NSImageView alloc]initWithFrame:NSMakeRect(152,262,64,56)]autorelease];
+ _stateIcon.symbolConfiguration=[NSImageSymbolConfiguration configurationWithPointSize:44 weight:NSFontWeightLight];
+ _stateIcon.contentTintColor=NSColor.secondaryLabelColor;[_stateView addSubview:_stateIcon];
+ self.stateTitle=StorageLabel(_stateView,NSMakeRect(24,222,320,24),@"",17,YES);
+ _stateTitle.alignment=NSTextAlignmentCenter;_stateTitle.maximumNumberOfLines=1;
+ self.stateText=StorageLabel(_stateView,NSMakeRect(40,170,288,44),@"",13,NO);
+ _stateText.alignment=NSTextAlignmentCenter;_stateText.maximumNumberOfLines=3;
+ self.progressBar=[[[NSProgressIndicator alloc]initWithFrame:NSMakeRect(84,148,200,8)]autorelease];
+ _progressBar.style=NSProgressIndicatorStyleBar;_progressBar.indeterminate=YES;_progressBar.displayedWhenStopped=NO;
+ [_stateView addSubview:_progressBar];
+ self.stateButton=StorageButton(_stateView,NSMakeRect(114,96,140,32),@"Scan",self,@selector(scan:));
 
  self.detailView=[[[NSView alloc]initWithFrame:self.bounds]autorelease];_detailView.hidden=YES;[self addSubview:_detailView];
  NSButton *back=WattActionButton(_detailView,NSMakeRect(12,412,84,28),@"Back",@"chevron.left",self,@selector(back:));
@@ -102,32 +117,49 @@ static NSView *StorageTile(NSView *parent,NSRect frame) {
  _detailReason.lineBreakMode=NSLineBreakByTruncatingTail;
  WattActionButton(_detailView,NSMakeRect(16,10,176,30),@"Show in Finder",@"folder",self,@selector(reveal:));
  self.trashButton=WattActionButton(_detailView,NSMakeRect(200,10,184,30),@"Move to Trash",@"trash",self,@selector(trash:));
+ [self reset];
  return self;
 }
 - (void)dealloc {
  [_listView release];[_detailView release];[_componentsView release];[_scanButton release];[_trashButton release];
- [_searchField release];[_table release];[_spinner release];[_totalLabel release];[_statusLabel release];[_emptyLabel release];
+ [_stateView release];[_stateButton release];[_progressBar release];[_stateIcon release];[_stateTitle release];[_stateText release];
+ [_searchField release];[_table release];[_totalLabel release];[_statusLabel release];[_emptyLabel release];
  [_pathLabel release];[_detailTitle release];[_detailSize release];[_detailReason release];[_detailIcon release];
  [_applications release];[_rows release];[_components release];[_checks release];[_selectedItem release];[super dealloc];
 }
+- (void)showState:(NSString *)symbol title:(NSString *)title text:(NSString *)text action:(NSString *)action busy:(BOOL)busy {
+ _stateIcon.image=[NSImage imageWithSystemSymbolName:symbol accessibilityDescription:nil];
+ _stateTitle.stringValue=title;_stateText.stringValue=text;_stateButton.title=action;_stateButton.enabled=YES;
+ // Scan is the one filled action on the page; Cancel stays a quiet text button.
+ WattSetButtonPlain(_stateButton,busy);WattSetButtonSelected(_stateButton,!busy);
+ if(busy)[_progressBar startAnimation:nil];else [_progressBar stopAnimation:nil];
+ _stateView.hidden=NO;_listView.hidden=YES;_detailView.hidden=YES;
+}
+- (void)showList {[_progressBar stopAnimation:nil];_stateView.hidden=YES;_listView.hidden=NO;}
 - (void)reset {
- _running=NO;_scanButton.enabled=YES;_scanButton.title=@"Scan";_searchField.enabled=YES;[_spinner stopAnimation:nil];
+ _running=NO;_scanButton.enabled=YES;_scanButton.title=@"Scan";_searchField.enabled=YES;
  _searchField.stringValue=@"";self.applications=@[];self.rows=@[];
  [_table deselectAll:nil];[_table reloadData];[self back:nil];
- _totalLabel.stringValue=@"";
- _statusLabel.stringValue=@"Scan to see what each app takes, leftovers included.";_statusLabel.toolTip=nil;
- _emptyLabel.stringValue=@"Each app with its caches, settings and other leftovers.\nChoose Scan to start.";_emptyLabel.hidden=NO;
+ _totalLabel.stringValue=@"";_statusLabel.stringValue=@"";_statusLabel.toolTip=nil;
+ [self showState:@"internaldrive" title:@"See what your apps take up"
+  text:@"Each app with its caches, settings and other leftovers, ready to move to the Trash." action:@"Scan" busy:NO];
 }
+// Visibility no longer drives the scan: closing the popover or switching tabs
+// keeps it running and keeps the results. Only Cancel or quitting stops it.
 - (void)setActive:(BOOL)active {
- if (_active==active)return;_active=active;
- if(active)_generation=++_owner.storageGeneration;else battStorageAction(_owner.handle,_generation,3);
- [self reset];
+ _active=active;
+ if(active && !_generation)_generation=++_owner.storageGeneration;
 }
+- (void)shutdown {if(_generation)battStorageAction(_owner.handle,_generation,3);}
 - (void)scan:(id)sender {
- if(!_active)return;
- if(_running){_scanButton.enabled=NO;_scanButton.title=@"Canceling…";battStorageAction(_owner.handle,_generation,2);return;}
- [self reset];_running=YES;_scanButton.title=@"Cancel";_statusLabel.stringValue=@"Measuring applications…";
- _emptyLabel.hidden=YES;[_spinner startAnimation:nil];
+ if(!_generation)_generation=++_owner.storageGeneration;
+ if(_running){
+  _scanButton.enabled=_stateButton.enabled=NO;_scanButton.title=_stateButton.title=@"Canceling…";
+  battStorageAction(_owner.handle,_generation,2);return;
+ }
+ [self reset];_running=YES;_scanButton.title=@"Cancel";
+ [self showState:@"internaldrive" title:@"Scanning applications"
+  text:@"Measuring each app and its leftovers. You can close WattNook; the scan keeps going." action:@"Cancel" busy:YES];
  battStorageAction(_owner.handle,_generation,1);
 }
 - (void)filter {
@@ -138,8 +170,7 @@ static NSView *StorageTile(NSView *parent,NSRect frame) {
   NSString *name=item[@"app"][@"name"] ?: @"";
   if(!query.length || [name rangeOfString:query options:NSCaseInsensitiveSearch|NSDiacriticInsensitiveSearch].location!=NSNotFound)[filtered addObject:item];
  }
- self.rows=filtered;[_table deselectAll:nil];[_table reloadData];_emptyLabel.hidden=_rows.count!=0||_running;
- if(query.length)_emptyLabel.stringValue=@"No matching applications.\nTry another name.";
+ self.rows=filtered;[_table deselectAll:nil];[_table reloadData];_emptyLabel.hidden=_rows.count!=0||!query.length;
 }
 - (void)controlTextDidChange:(NSNotification *)notification {[self filter];}
 - (void)showTotals {
@@ -151,14 +182,13 @@ static NSView *StorageTile(NSView *parent,NSRect frame) {
  _totalLabel.attributedStringValue=_applications.count?line:[[[NSAttributedString alloc]initWithString:@""]autorelease];
 }
 - (void)update:(NSDictionary *)snapshot {
- if(!_active)return;
  NSString *state=snapshot[@"state"];
  if([state isEqual:@"running"]){
-  _statusLabel.stringValue=[NSString stringWithFormat:@"Scanning, %@ files",
+  _stateText.stringValue=[NSString stringWithFormat:@"%@ files checked. You can close WattNook; the scan keeps going.",
    [NSNumberFormatter localizedStringFromNumber:snapshot[@"visited"] ?: @0 numberStyle:NSNumberFormatterDecimalStyle]];
   return;
  }
- [self back:nil];_running=NO;_scanButton.enabled=YES;_scanButton.title=@"Rescan";[_spinner stopAnimation:nil];
+ [self back:nil];_running=NO;_scanButton.enabled=YES;_scanButton.title=@"Rescan";
  NSMutableArray *apps=[NSMutableArray array];
  NSDictionary *inventory=[snapshot[@"applications"] isKindOfClass:NSDictionary.class]?snapshot[@"applications"]:@{};
  NSArray *entries=[inventory[@"entries"] isKindOfClass:NSArray.class]?inventory[@"entries"]:@[];
@@ -177,13 +207,16 @@ static NSView *StorageTile(NSView *parent,NSRect frame) {
   return [a[@"app"][@"name"] localizedCaseInsensitiveCompare:b[@"app"][@"name"]];
  }];
  NSString *reason=[snapshot[@"reason"] isKindOfClass:NSString.class]?snapshot[@"reason"]:@"";
- _statusLabel.stringValue=[state isEqual:@"complete"]?@"Sizes include each app's caches, settings and other leftovers.":
+ _statusLabel.stringValue=[state isEqual:@"complete"]?@"Includes caches, settings and other leftovers.":
   [state isEqual:@"canceled"]?@"Scan canceled; the list may be incomplete.":
   [state isEqual:@"error"]?[NSString stringWithFormat:@"Scan unavailable: %@",reason]:
   [NSString stringWithFormat:@"Some items could not be measured: %@",reason];
  _statusLabel.toolTip=_statusLabel.stringValue;
  [self showTotals];[self filter];
- if(!apps.count){_emptyLabel.hidden=NO;_emptyLabel.stringValue=[state isEqual:@"error"]?@"Scan unavailable.\nCheck the message above, then try Rescan.":@"No applications were measured.\nTry Rescan.";}
+ if(apps.count)[self showList];
+ else if([state isEqual:@"error"])[self showState:@"exclamationmark.triangle" title:@"Scan unavailable" text:reason action:@"Try Again" busy:NO];
+ else [self showState:@"internaldrive" title:[state isEqual:@"canceled"]?@"Scan canceled":@"No applications found"
+  text:@"Nothing was measured this time." action:@"Scan" busy:NO];
 }
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)table{return _rows.count;}
 - (NSView *)tableView:(NSTableView *)table viewForTableColumn:(NSTableColumn *)column row:(NSInteger)index {
@@ -263,7 +296,7 @@ static NSView *StorageTile(NSView *parent,NSRect frame) {
  [_table deselectAll:nil];
 }
 - (void)reveal:(id)sender {
- if(!_active || !_selectedItem)return;
+ if(!_selectedItem)return;
  NSString *path=_selectedItem[@"path"];
  if([path isKindOfClass:NSString.class] && path.isAbsolutePath)
   [NSWorkspace.sharedWorkspace activateFileViewerSelectingURLs:@[[NSURL fileURLWithPath:path]]];
@@ -295,7 +328,7 @@ static NSView *StorageTile(NSView *parent,NSRect frame) {
  return nil;
 }
 - (void)trash:(id)sender {
- if(!_active || !_selectedItem)return;
+ if(!_selectedItem)return;
  NSArray *parts=[self selectedParts];if(!parts.count)return;
  if(!_confirming){
   // A second click confirms; the button says exactly what it will do.
@@ -316,7 +349,6 @@ static NSView *StorageTile(NSView *parent,NSRect frame) {
  // app was installed by another user; everything stays recoverable.
  [NSWorkspace.sharedWorkspace recycleURLs:urls completionHandler:^(NSDictionary *moved,NSError *error){
   dispatch_async(dispatch_get_main_queue(),^{
-   if(!self->_active)return;
    if(error && moved.count<urls.count){
     self.detailReason.stringValue=[NSString stringWithFormat:@"Not moved: %@",error.localizedDescription];
     self.trashButton.enabled=YES;return;
@@ -335,6 +367,7 @@ NSView *WattCreateStorageReview(BattMenuController *controller){
  controller.storageView=[[[WattStorageView alloc]initWithOwner:controller]autorelease];return controller.storageView;
 }
 void WattSetStorageReviewActive(BattMenuController *controller,BOOL active){[(WattStorageView *)controller.storageView setActive:active];}
+void WattCloseStorageReview(BattMenuController *controller){[(WattStorageView *)controller.storageView shutdown];}
 void WattShowStorageReview(BattMenuController *controller){BattShowStoragePage(controller);}
 void WattUpdateStorageReview(BattMenuController *controller,uint64_t generation,NSDictionary *snapshot){
  if(generation!=controller.storageGeneration)return;[(WattStorageView *)controller.storageView update:snapshot];

@@ -366,6 +366,14 @@ int main(int argc, const char *argv[]) {
             c.powerFlowView.supportedLimits = @[@50,@55,@60,@65,@70,@75,@80,@85,@90,@95,@100];
             [c item:BattItemQuickLimits].hidden = NO; [c item:BattItemLimit80].enabled = YES;
             c.powerFlowView.limitEditable = YES;
+            [c item:BattItemInstall].hidden = YES; [c item:BattItemUpgrade].hidden = YES;
+            // Illustrative 15-minute strip: a working session with a charge, a heat
+            // pause and a quieter stretch (the throttle is reset per sample).
+            for (NSInteger i = 0; i < 90; i++) {
+                [c.powerFlowView setValue:@0 forKey:@"_lastSample"];
+                double watts = 9 + 7 * sin(i / 6.0) + (i % 7) * 0.8 + (i > 55 && i < 70 ? 9 : 0);
+                [c.powerFlowView recordMacWatts:watts charging:i < 30 heat:i >= 30 && i < 60 onBattery:NO];
+            }
             NSArray *readme = @[
                 @{@"name":@"readme-charging", @"charge":@62, @"plug":@YES, @"adapter":@38.4, @"battery":@19.6, @"system":@18.8, @"heat":@NO, @"cpu":@64, @"detail":@"On, pauses at 33 °C"},
                 @{@"name":@"readme-heat", @"charge":@64, @"plug":@YES, @"adapter":@21.3, @"battery":@0, @"system":@21.3, @"heat":@YES, @"cpu":@91, @"detail":@"Paused until 30 °C"},

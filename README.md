@@ -5,18 +5,18 @@
 <h1 align="center">WattNook</h1>
 
 <p align="center"><strong>Free battery care for Apple Silicon Macs — and it works on macOS 27.</strong><br>
-Heat Protection, charge limits from 50%, and a live view of where every watt goes.</p>
+Heat Protection, charge limits from 50%, a live view of where every watt goes, and an app uninstaller.</p>
 
 <p align="center">
   <a href="LICENSE"><img alt="GPL-2.0" src="https://img.shields.io/badge/license-GPL--2.0-526B80"></a>
   <img alt="macOS 15+ incl. 27" src="https://img.shields.io/badge/macOS-15%2B%20·%2027-526B80">
   <img alt="Apple Silicon" src="https://img.shields.io/badge/Apple%20Silicon-only-526B80">
   <img alt="Native AppKit" src="https://img.shields.io/badge/UI-native%20AppKit-526B80">
-  <img alt="~25 MB RAM" src="https://img.shields.io/badge/RAM-~25%20MB-526B80">
+  <img alt="~50 MB RAM" src="https://img.shields.io/badge/RAM-~50%20MB-526B80">
 </p>
 
 <p align="center">
-  <img src="docs/images/wattnook-states.gif" width="420" alt="WattNook switching between charging, heat-paused and adapter-plus-battery states">
+  <img src="docs/images/battery.png" width="400" alt="WattNook Battery view: charge, limit, power flow and the last 15 minutes of Mac power">
 </p>
 
 ## Why WattNook
@@ -26,17 +26,19 @@ macOS 27 removed the SMC keys that charge limiters relied on, so most of them qu
 - **Heat Protection that keeps you on AC.** When the battery gets hot, charging pauses at the current level while the adapter keeps powering the Mac. It resumes once the battery cools. A low battery whose adapter can't keep up is never left draining.
 - **Charge limits from 50% to 100%.** Apple's built-in setting stops at 80%. WattNook adds 50–75%, never discharges on the adapter to reach a lower limit, and keeps Apple's 80% underneath as a safety net.
 - **Sailing, Top Up and Discharge, free.** Sailing stops micro-charging: once the limit is reached the battery drifts 5–10% before charging again. Top Up charges to 100% once for a trip and restores your limit when you unplug. Discharge runs down to a lower limit while the charger stays plugged in.
-- **See where the power goes.** A live flow shows adapter, battery and Mac watts as they split and merge, plus battery *and* CPU temperature, so you know whether the battery or the processor is the hot part.
+- **See where the power goes.** A live power flow shows the adapter's watts splitting between the Mac and the battery (or the battery helping a weak charger), a 15-minute strip of Mac power, battery *and* CPU temperature, and battery health.
 - **Find what's heating your Mac.** Top apps by CPU, memory or disk, memory pressure, a 15-minute history, and a normal Quit one hover away.
+- **Uninstall apps with their leftovers.** Storage sizes every app together with its caches, settings, containers and other files in `~/Library`, and moves what you pick to the Trash. Exact matches are preselected, name-only matches are not, running apps are refused, and nothing is deleted permanently. The scan keeps running when you close the popover.
 - **Keep Awake with the lid closed.** Run long jobs or remote sessions without sleep; WattNook dims the panel when the lid closes.
-- **Light and native.** AppKit, no Electron, about 25 MB of memory when idle. Keyboard shortcuts ⌘1 / ⌘2 / ⌘3 and ⌘,.
+- **Light and native.** AppKit, no Electron, about 50 MB of memory when idle. Keyboard shortcuts ⌘1 / ⌘2 / ⌘3 and ⌘,.
 
 <table>
-  <tr><th>Heat Protection</th><th>System</th><th>Settings</th></tr>
+  <tr><th>Heat Protection</th><th>System</th><th>Storage</th><th>Uninstall</th></tr>
   <tr>
-    <td><img src="docs/images/battery-heat.png" width="260" alt="Battery view with charging paused for heat while the adapter powers the Mac"></td>
-    <td><img src="docs/images/system.png" width="260" alt="System view with CPU load, CPU temperature, memory, disk and top apps"></td>
-    <td><img src="docs/images/settings.png" width="260" alt="Settings with color palette, menu-bar items and monitoring options"></td>
+    <td><img src="docs/images/battery-heat.png" width="200" alt="Battery view with charging paused while the battery cools and the adapter powers the Mac"></td>
+    <td><img src="docs/images/system.png" width="200" alt="System view with CPU load, CPU temperature, memory, disk and top apps"></td>
+    <td><img src="docs/images/storage.png" width="200" alt="Storage view listing apps by size including their leftovers"></td>
+    <td><img src="docs/images/uninstall.png" width="200" alt="An app's uninstaller with its bundle and leftovers checked, ready to move to the Trash"></td>
   </tr>
 </table>
 
@@ -60,7 +62,7 @@ Requirements: Apple Silicon, macOS 15 or later, Go and the Xcode command-line to
 
 ```sh
 git clone https://github.com/itscloud0/wattnook.git && cd wattnook
-WATTNOOK_VERSION=0.4.1 tools/build-wattnook-app.sh /tmp/WattNook.app
+WATTNOOK_VERSION=0.5.0 tools/build-wattnook-app.sh /tmp/WattNook.app
 mv /tmp/WattNook.app ~/Applications/ && open ~/Applications/WattNook.app
 ```
 

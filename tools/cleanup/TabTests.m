@@ -1,5 +1,7 @@
 #import "../../pkg/gui/native_internal.h"
 #include <assert.h>
+#include <sys/stat.h>
+#include <unistd.h>
 void battMenuWillOpen(uintptr_t h) {}
 void battMenuTimerFired(uintptr_t h) {}
 void battMenuAction(uintptr_t h,int i,bool b) {}
@@ -35,7 +37,10 @@ int main(int argc,const char **argv){@autoreleasepool{
  NSString *directory=argc==2?[NSString stringWithUTF8String:argv[1]]:nil;
  NSWindow *host=[[[NSWindow alloc]initWithContentRect:dashboard.bounds styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO]autorelease];
  host.contentView=dashboard;[host orderFront:nil];[dashboard displayIfNeeded];Capture(dashboard,directory,@"initial.png");
+ assert(![[v valueForKey:@"stateView"] isHidden]);
  [scan performClick:nil];assert(lastAction==1&&lastGeneration==c.storageGeneration);
+ [((NSTextField *)[v valueForKey:@"stateText"]) setStringValue:@"219,862 files checked. You can close WattNook; the scan keeps going."];
+ [dashboard displayIfNeeded];Capture(dashboard,directory,@"scanning.png");
  [scan performClick:nil];assert(lastAction==2&&!scan.enabled);
  NSDictionary *identity=@{@"name":@"An application with a deliberately long but real-looking name",@"bundleID":@"test.one",@"path":@"/synthetic/Applications/One.app",@"running":@YES};
  NSDictionary *snapshot=@{@"state":@"partial",@"reason":@"Some folders were inaccessible",@"applications":@{@"entries":@[
@@ -67,12 +72,55 @@ int main(int argc,const char **argv){@autoreleasepool{
  [FindButton(detail,@"Back") performClick:nil];assert(detail.hidden&&table.selectedRow==-1);
  WattUpdateStorageReview(c,c.storageGeneration,@{@"state":@"error",@"reason":@"Permission denied"});
  assert(detail.hidden&&table.numberOfRows==0);
- assert([((NSTextField *)[v valueForKey:@"statusLabel"]).stringValue containsString:@"Permission denied"]);
+ assert([((NSTextField *)[v valueForKey:@"stateText"]).stringValue containsString:@"Permission denied"]);
  [dashboard displayIfNeeded];Capture(dashboard,directory,@"error.png");
- uint64_t old=c.storageGeneration;[FindButton(dashboard,@"Battery") performClick:nil];assert(lastAction==3&&v.hidden);
- [FindButton(dashboard,@"Storage") performClick:nil];assert(c.storageGeneration!=old);
- WattUpdateStorageReview(c,old,snapshot);assert(table.numberOfRows==0);
- [scan performClick:nil];[c popoverDidClose:[NSNotification notificationWithName:NSPopoverDidCloseNotification object:c.popover]];
- assert(lastAction==3&&table.numberOfRows==0);
+ // Switching tabs or closing the popover neither cancels a scan nor drops results.
+ int before=actionCount;uint64_t generation=c.storageGeneration;
+ [FindButton(dashboard,@"Battery") performClick:nil];assert(actionCount==before&&v.hidden);
+ [FindButton(dashboard,@"Storage") performClick:nil];assert(c.storageGeneration==generation);
+ [scan performClick:nil];assert(lastAction==1);int started=actionCount;
+ [c popoverDidClose:[NSNotification notificationWithName:NSPopoverDidCloseNotification object:c.popover]];
+ assert(actionCount==started);
+ WattUpdateStorageReview(c,c.storageGeneration,snapshot);assert(table.numberOfRows==2);
+ // README capture: real app icons and names from this Mac, illustrative sizes.
+ if(directory){
+  NSArray *names=@[@"Cursor",@"Discord",@"Spotify",@"Telegram",@"Notion",@"Linear",@"Zed"];
+  NSArray *bytes=@[@1460000000,@820000000,@640000000,@510000000,@470000000,@380000000,@290000000];
+  NSMutableArray *entries=[NSMutableArray array];
+  for(NSUInteger i=0;i<names.count;i++){
+   NSString *id=[@"com.example." stringByAppendingString:[names[i] lowercaseString]];
+   NSString *lib=[NSHomeDirectory() stringByAppendingPathComponent:@"Library"];
+   [entries addObject:@{@"identity":@{@"name":names[i],@"bundleID":id,@"path":[NSString stringWithFormat:@"/Applications/%@.app",names[i]]},
+    @"size":@{@"bytes":bytes[i],@"complete":@YES},
+    @"leftovers":@[@{@"path":[lib stringByAppendingFormat:@"/Application Support/%@",names[i]],@"category":@"Application Support",@"bytes":@([bytes[i] doubleValue]*0.6),@"complete":@YES},
+                   @{@"path":[lib stringByAppendingFormat:@"/Caches/%@",id],@"category":@"Caches",@"bytes":@([bytes[i] doubleValue]*0.3),@"complete":@YES},
+                   @{@"path":[lib stringByAppendingFormat:@"/Preferences/%@.plist",id],@"category":@"Preferences",@"bytes":@12000,@"complete":@YES},
+                   @{@"path":[lib stringByAppendingFormat:@"/Saved Application State/%@.savedState",id],@"category":@"Saved state",@"bytes":@48000,@"complete":@YES}]}];
+  }
+  WattUpdateStorageReview(c,c.storageGeneration,@{@"state":@"complete",@"applications":@{@"entries":entries}});
+  [dashboard displayIfNeeded];Capture(dashboard,directory,@"readme-storage.png");
+  [table selectRowIndexes:[NSIndexSet indexSetWithIndex:1] byExtendingSelection:NO];[table sendAction:table.action to:table.target];
+  [dashboard displayIfNeeded];Capture(dashboard,directory,@"readme-uninstall.png");
+  [FindButton(detail,@"Back") performClick:nil];
+ }
+ // End to end: a throwaway bundle goes to the Trash through the real path
+ // (revalidation, then NSWorkspace recycle), and leaves the list.
+ NSString *tmp=[NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"wattnook-trash-%d",getpid()]];
+ NSString *bundle=[tmp stringByAppendingPathComponent:@"WattNook Trash Test.app"];
+ [NSFileManager.defaultManager createDirectoryAtPath:[bundle stringByAppendingPathComponent:@"Contents/MacOS"] withIntermediateDirectories:YES attributes:nil error:NULL];
+ struct stat st;assert(lstat(bundle.fileSystemRepresentation,&st)==0);
+ NSDictionary *dummy=@{@"name":@"WattNook Trash Test",@"bundleID":@"io.wattnook.trash-test",@"path":bundle,
+  @"device":@((uint64_t)st.st_dev),@"inode":@((uint64_t)st.st_ino)};
+ WattUpdateStorageReview(c,c.storageGeneration,@{@"state":@"complete",@"applications":@{@"entries":@[
+  @{@"identity":dummy,@"size":@{@"bytes":@4096,@"complete":@YES}}]}});
+ assert(table.numberOfRows==1);
+ [table selectRowIndexes:[NSIndexSet indexSetWithIndex:0] byExtendingSelection:NO];[table sendAction:table.action to:table.target];
+ NSButton *move=FindButton(detail,@"Move to Trash");assert(move.enabled);
+ [move performClick:nil];assert([move.title isEqual:@"Move 1 item"]);[move performClick:nil];
+ for(int i=0;i<100&&[NSFileManager.defaultManager fileExistsAtPath:bundle];i++)
+  [NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
+ [NSRunLoop.mainRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.3]];
+ assert(![NSFileManager.defaultManager fileExistsAtPath:bundle]&&table.numberOfRows==0);
+ [NSFileManager.defaultManager removeItemAtPath:tmp error:NULL];
  [host orderOut:nil];[c release];NSLog(@"Application-first Storage checks passed");
 }return 0;}

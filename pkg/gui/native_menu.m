@@ -91,7 +91,7 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
 - (void)showStorageReview:(id)sender { WattShowStorageReview(self); }
 
 - (void)dealloc {
-    WattSetStorageReviewActive(self,NO);
+    WattCloseStorageReview(self);
     [_storageView release];
     [_awakeDetailsWindow close];
     [_awakeDetailsWindow release];
