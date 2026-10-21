@@ -1,20 +1,13 @@
 ---
 name: WattNook
-description: Native macOS battery and system monitor whose ground is a sky coloured by the Mac's power state
+description: Native macOS battery and system monitor in Apple's dark grouped style
 colors:
-  sky-day: ["#0B2240", "#184A7E", "#2563A0"]
-  sky-dusk: ["#101830", "#1F2D58", "#2F4580"]
-  sky-sunset: ["#24133A", "#7E2C5C", "#B04A2E"]
-  sky-night: ["#0A0B1C", "#171A3C", "#262B5E"]
-  sky-twilight: ["#110E28", "#2B2052", "#4F3683"]
-  sky-overcast: ["#161E2A", "#1B2532", "#212B3A"]
-  tile: "rgba(255,255,255,0.10)"
-  tile-highlight: "rgba(255,255,255,0.16)"
-  energy-blue: "#8CCCFF"
-  energy-mint: "#6BEBC7"
-  energy-violet: "#C7ABFF"
-  energy-amber: "#FFC76B"
-  warning: "#FFB861"
+  ground: "#1C1C1E"
+  group: "#2C2C2E"
+  group-highlight: "#3A3A3E"
+  energy: "system accent of the saved palette (systemBlue, systemMint, systemPurple, systemOrange; Glass uses controlAccentColor)"
+  charging: "systemGreen"
+  warning: "systemOrange"
 typography:
   charge:
     fontFamily: "SF Pro, system-ui"
@@ -68,37 +61,19 @@ components:
 
 ## Overview
 
-**Creative North Star: "A weather report for power."**
+**Creative North Star: "Apple's own dark grouped style, with the data in colour."**
 
-The whole popover is a sky. Its gradient is the Mac's power state and is read before any word: day blue while charging, dusk blue while held on the adapter, a sunset when Heat Protection pauses charging, night on battery, twilight during Discharge, overcast when telemetry is unknown. Content sits on that sky as white type and translucent tiles, the way a forecast app sets its readings on the weather. Chosen on 2026-10-21 (Impeccable direction roll, seed:3eb6d2297435b8e7) after the user rejected the graphite wayfinding look as too weak and pointed at CleanMyMac's menu and AlDente.
+A flat neutral ground (#1C1C1E) and groups one grey step lighter (#2C2C2E), the greys macOS uses for its own grouped settings. No gradient, no tint, no translucent cards over colour: the user rejected the state-sky gradient on 2026-10-21 ("feels AI"). Colour appears only where it carries meaning: green for charging, orange for heat and warnings, the palette accent for energy and selection.
 
 **Key characteristics**
 
-- One state owns the surface: the sky changes, the layout does not.
-- One light numeral far larger than anything else (66 pt charge).
-- Tiles instead of rules: 10% white, 14 pt corners, no borders, no shadows.
-- Colour does jobs: sky = state, light accent = energy and selection, amber = warning, green = charging bars.
+- One light 66 pt charge numeral with a small muted percent sign.
+- Groups instead of rules; no borders, no resting shadows.
+- Plain-language labels. No middle-dot separators ("Paused while the battery cools", "Battery idle", "Last 15 minutes").
 
 ## Colors
 
-### The sky (`WattSkyGradient`)
-
-Three stops, bottom → middle (55%) → top. The brightest hue stays in the top band; text areas keep white at 4.5:1 or better. The sky cross-fades over 0.8 s on a state change (instant with Reduce Motion). In the Glass palette the sky drops to 62% opacity so the popover's Liquid Glass shows through.
-
-| Sky | State | Rule |
-|---|---|---|
-| day | battery charging on adapter | `IsCharging`, or > 0.25 W into the battery |
-| dusk | on adapter, not charging (limit reached, held) | plugged in, otherwise |
-| sunset | Heat Protection pause | heat paused while plugged in |
-| night | on battery | not plugged in |
-| twilight | Discharge to the limit | discharging while plugged in |
-| overcast | telemetry unknown | no power data or no charge reading |
-
-### Accents (`WattAccentColor`, `WattWarningColor`)
-
-The saved palette (Blue, Mint, Violet, Amber, Glass) now picks a light energy tone that reads on every sky: the flow ribbon, the charge rail, selection. Warnings (hot CPU, low health, heat bars in the strip, memory pressure) use light amber, never system orange, which disappears into the sunset. Green stays for charging.
-
-**The Sky-Is-State Rule.** Never tint the sky for decoration or by page. Every page shows the current power state's sky.
+Ground `#1C1C1E`, groups `#2C2C2E` (hover `#3A3A3E`). In the Glass palette the ground drops to 55% and groups become 8% white so the popover's Liquid Glass shows through. Energy and selection use the saved palette's system colour; charging is system green; heat pause, hot CPU, low health and memory pressure are system orange. The state line under the charge is orange during a heat pause, green while charging, otherwise secondary.
 
 ## Typography
 
@@ -106,19 +81,19 @@ SF Pro throughout. The charge is 66 pt Light; System headline values 22 pt Semib
 
 ## Layout
 
-400 pt wide. Battery is 502 pt tall, System, Storage, Settings and History 532 pt. One 8 pt grid: tiles and full-width controls at a 16 pt margin (16–384), every text edge at 32 pt (32–368) whether on the sky or inside a tile, 8 pt between a heading and its tile and between stacked tiles, 20–24 pt between groups, 12 pt inside tiles.
+400 pt wide. Battery is 502 pt tall, System, Storage, Settings and History 532 pt. One 8 pt grid: tiles and full-width controls at a 16 pt margin (16–384), every text edge at 32 pt (32–368) whether on the ground or inside a tile, 8 pt between a heading and its tile and between stacked tiles, 20–24 pt between groups, 12 pt inside tiles.
 
 **Battery, top to bottom:** header (WattNook, Settings); Battery / System / Storage destinations; the 66 pt charge with its state line and the Battery / CPU / Health readings on the right; the draggable limit rail with its action (Top Up, Discharge, or Update Helper); the Power tile holding the flow; the 15-minute Mac-power strip tile; Heat Protection and Keep Awake action tiles side by side (Keep Awake spans both when heat is unavailable).
 
-**System:** memory pressure and History on the sky; one tile with CPU / Memory / Disk readings and their context row; "Top consumers" and its underlined CPU / Memory / Disk sort in one row; one tile with six consumer rows; Open Activity Monitor.
+**System:** memory pressure and History on the ground; one tile with CPU / Memory / Disk readings and their context row; "Top consumers" and its underlined CPU / Memory / Disk sort in one row; one tile with six consumer rows; Open Activity Monitor.
 
-**Storage:** category segments, search and Scan on the sky; the results list on one tile.
+**Storage:** category segments, search and Scan on the ground; the results list on one tile.
 
-**Settings:** headings on the sky, each group (Appearance, Menu bar, Monitoring) on its own tile, then Keep Awake details and Advanced controls as full-width actions.
+**Settings:** headings on the ground, each group (Appearance, Menu bar, Monitoring) on its own tile, then Keep Awake details and Advanced controls side by side.
 
 ## Elevation & Depth
 
-None beyond the sky and one tile step. No hairlines, no shadows except the limit grip's small lift. Glass-palette backing shapes remain behind destinations and the action tiles.
+None beyond the ground and one group step. No hairlines, no shadows except the limit grip's small lift. Glass-palette backing shapes remain behind destinations and the action tiles.
 
 ## Components
 
@@ -144,9 +119,9 @@ Destinations are capsules with a filled selection. Sorting is underlined, never 
 
 ## Do's and Don'ts
 
-- **Do** let the sky carry the state; keep the state line white on the sunset.
-- **Do** put grouped content on tiles and leave headings on the sky.
+- **Do** put colour on data and state only.
+- **Do** put grouped content on groups and leave headings on the ground.
 - **Do** keep figures in ink and units quiet.
 - **Don't** add hairlines, borders or resting shadows.
-- **Don't** use system orange or the old dark accent tones on the sky.
+- **Don't** bring back gradients, tinted grounds or middle-dot separators.
 - **Don't** invent strip bars or zero readings when data is missing.

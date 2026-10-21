@@ -356,7 +356,6 @@ static NSAttributedString *WattFigureWithQuietUnits(NSString *text, NSFont *font
 @end
 @interface WattDashboard : NSView
 @property(nonatomic, assign) BattMenuController *controller;
-@property(nonatomic, assign) WattSky sky;
 - (void)refreshCPU:(double)cpu memory:(double)memory;
 @end
 @implementation WattDashboard {
@@ -390,31 +389,8 @@ static NSAttributedString *WattFigureWithQuietUnits(NSString *text, NSFont *font
 }
 - (void)drawRect:(NSRect)rect {
     (void)rect;
-    // The sky is the state: read before any word. Glass thins it so the
-    // popover's own Liquid Glass still shows through.
-    [WattSkyGradient(_sky) drawInRect:self.bounds angle:90];
-}
-- (void)setSky:(WattSky)sky {
-    if (sky == _sky) return;
-    _sky = sky;
-    if (self.layer && !NSWorkspace.sharedWorkspace.accessibilityDisplayShouldReduceMotion) {
-        CATransition *fade = [CATransition animation];
-        fade.type = kCATransitionFade; fade.duration = 0.8;
-        [self.layer addAnimation:fade forKey:@"sky"];
-    }
-    self.needsDisplay = YES;
-}
-- (void)updateSky {
-    BattPowerFlowView *p = self.controller.powerFlowView;
-    WattSky sky = WattSkyUnknown;
-    if (p.hasTelemetry && p.chargePercent >= 0) {
-        if (p.dischargingToLimit && p.pluggedIn) sky = WattSkyDischarge;
-        else if (p.heatPaused && p.pluggedIn) sky = WattSkyHeat;
-        else if (!p.pluggedIn) sky = WattSkyBattery;
-        else if (p.chargingStateKnown ? p.batteryCharging : p.batteryWatts > 0.25) sky = WattSkyCharging;
-        else sky = WattSkyHeld;
-    }
-    self.sky = sky;
+    [WattGroundColor() setFill];
+    NSRectFill(self.bounds);
 }
 // Puts system Liquid Glass shapes behind the given controls, grouped in one
 // container as Apple recommends. They only show in the Glass theme.
@@ -493,7 +469,7 @@ static void Redisplay(NSView *view) {
     BattMenuController *c = self.controller;
     _storagePage = WattCreateStorageReview(c);
     [self addSubview:_storagePage]; _storagePage.hidden = YES;
-    // Forecast layout: hero numeral and limit rail on the sky, then a Power
+    // Hero numeral and limit rail on the ground, then a Power
     // tile holding the flow, the 15-minute strip tile, and the two action tiles.
     // 8 pt grid: tiles at 16, content at 32, 8 between tiles, 12 inside.
     Card(_batteryPage, NSMakeRect(16, 186, 368, 124));
@@ -523,7 +499,7 @@ static void Redisplay(NSView *view) {
     ((WattButton *)c.heatButton).opensMenu = YES;
     // Battery ends at its controls; System and Storage are one tab away and
     // are no longer echoed here. Summary values stay detached for the menu.
-    // System on the sky: the three readings share one tile, the consumers another.
+    // The three readings share one group, the consumers another.
     // 8 above each tile, 20 between the readings and the consumers group.
     Card(_systemPage, NSMakeRect(16, 314, 368, 92));
     Card(_systemPage, NSMakeRect(16, 50, 368, 208));
@@ -584,7 +560,7 @@ static void Redisplay(NSView *view) {
     window.alignment = NSTextAlignmentRight;
     _historyChart = [[[WattHistoryView alloc] initWithFrame:NSMakeRect(24,40,352,360)] autorelease];
     [_historyPage addSubview:_historyChart];
-    Label(_historyPage,NSMakeRect(24,12,352,18),@"10-second samples · kept in memory only",11,NO);
+    Label(_historyPage,NSMakeRect(24,12,352,18),@"Sampled every 10 seconds, kept in memory only",11,NO);
     // Grouped cards, heading above each (AlDente's settings rhythm).
     // Headings at the 32 pt content edge, 8 pt above their tile, 24 pt between groups.
     Card(_settingsPage,NSMakeRect(16,356,368,54));
@@ -719,7 +695,6 @@ static void Redisplay(NSView *view) {
 - (void)refreshCPU:(double)cpu memory:(double)memory {
     if (_sortMetric < 0 || _sortMetric > 2) _sortMetric = 0;
     _cpu = cpu; _memory = memory;
-    [self updateSky];
     BattMenuController *c = self.controller;
     BOOL monitoring = WattMonitoringEnabled();
     if (!monitoring) cpu = memory = -1;
@@ -796,7 +771,7 @@ static void Redisplay(NSView *view) {
     BOOL awaitingStatus = c.keepAwakeTogglePending || (!c.keepAwakeStatus && c.keepAwakeStatusReading);
     c.darkButton.title = c.keepAwakeChanging ? @"Changing…" :
         awaitingStatus ? @"Checking…" :
-        c.lidGuardError ? @"Keep Awake · Issue" : awake ? @"Keep Awake · On" : @"Keep Awake";
+        c.lidGuardError ? @"Keep Awake has an issue" : awake ? @"Keep Awake is on" : @"Keep Awake";
     c.darkButton.enabled = !c.keepAwakeChanging && !awaitingStatus;
     c.darkButton.toolTip = awaitingStatus ? @"Reading macOS sleep setting…" : c.keepAwakeError ?: c.lidGuardError ?: @"Prevents system sleep. Remote access still requires a working connection. Details are in Settings.";
     [c item:BattItemKeepAwake].enabled = c.darkButton.enabled;
@@ -885,7 +860,6 @@ void BattBuildPopover(BattMenuController *controller) {
     WattDashboard *content = [[[WattDashboard alloc] initWithFrame:NSMakeRect(0,0,400,532)] autorelease];
     content.controller = controller;
     content.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
-    content.wantsLayer = YES; // the sky cross-fades between power states
     [content build];
     [content setFrameSize:NSMakeSize(400, WattBatteryPopoverHeight)]; // Battery opens first.
     NSViewController *viewController = [[[NSViewController alloc] init] autorelease];

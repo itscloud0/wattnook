@@ -52,7 +52,7 @@ static NSString *StorageSize(NSDictionary *observation) {
  [_scanButton setAccessibilityIdentifier:@"storage.scan"];
  self.statusLabel=StorageLabel(_listView,NSMakeRect(32,336,336,22),@"Scan when you need a storage overview.",12,NO);
  _statusLabel.maximumNumberOfLines=1;_statusLabel.lineBreakMode=NSLineBreakByTruncatingTail;
- // The list sits on one translucent tile, like the other pages on the sky.
+ // The list sits on one grouped tile, like the other pages.
  NSView *tile=[[[NSView alloc]initWithFrame:NSMakeRect(16,8,368,322)]autorelease];
  tile.wantsLayer=YES;tile.layer.backgroundColor=WattTileColor(NO).CGColor;tile.layer.cornerRadius=14;
  [_listView addSubview:tile];
@@ -134,7 +134,7 @@ static NSString *StorageSize(NSDictionary *observation) {
 - (void)update:(NSDictionary *)snapshot {
  if(!_active)return;
  NSString *state=snapshot[@"state"];
- if([state isEqual:@"running"]){_statusLabel.stringValue=[NSString stringWithFormat:@"Scanning · %@ entries",snapshot[@"visited"] ?: @0];return;}
+ if([state isEqual:@"running"]){_statusLabel.stringValue=[NSString stringWithFormat:@"Scanning, %@ files",snapshot[@"visited"] ?: @0];return;}
  [self back:nil];_running=NO;_scanButton.enabled=YES;_scanButton.title=@"Rescan";
  NSMutableArray *apps=[NSMutableArray array],*caches=[NSMutableArray array];
  NSDictionary *inventory=[snapshot[@"applications"] isKindOfClass:NSDictionary.class]?snapshot[@"applications"]:@{};
@@ -159,9 +159,9 @@ static NSString *StorageSize(NSDictionary *observation) {
   return [a[@"app"][@"name"] localizedCaseInsensitiveCompare:b[@"app"][@"name"]];
  };
  self.applications=[apps sortedArrayUsingComparator:bySize];self.caches=[caches sortedArrayUsingComparator:bySize];
- NSString *summary=[state isEqual:@"complete"]?@"Applications measured":[state isEqual:@"canceled"]?@"Canceled · partial results":[state isEqual:@"error"]?@"Scan unavailable":@"Partial results";
+ NSString *summary=[state isEqual:@"complete"]?@"Applications measured":[state isEqual:@"canceled"]?@"Canceled, partial results":[state isEqual:@"error"]?@"Scan unavailable":@"Partial results";
  NSString *reason=[snapshot[@"reason"] isKindOfClass:NSString.class]?snapshot[@"reason"]:@"";
- _statusLabel.stringValue=reason.length?[NSString stringWithFormat:@"%@ · %@",summary,reason]:[NSString stringWithFormat:@"%@ · %lu apps",summary,(unsigned long)apps.count];
+ _statusLabel.stringValue=reason.length?[NSString stringWithFormat:@"%@. %@",summary,reason]:[NSString stringWithFormat:@"%@, %lu apps",summary,(unsigned long)apps.count];
  _statusLabel.toolTip=_statusLabel.stringValue;
  [self category:nil];
  if(!apps.count)_emptyLabel.stringValue=[state isEqual:@"error"]?@"Scan unavailable.\nCheck the message above, then try Rescan.":@"No applications were measured.\nTry Rescan; some locations may be unavailable.";

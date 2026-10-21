@@ -367,9 +367,9 @@ int main(int argc, const char *argv[]) {
             [c item:BattItemQuickLimits].hidden = NO; [c item:BattItemLimit80].enabled = YES;
             c.powerFlowView.limitEditable = YES;
             NSArray *readme = @[
-                @{@"name":@"readme-charging", @"charge":@62, @"plug":@YES, @"adapter":@38.4, @"battery":@19.6, @"system":@18.8, @"heat":@NO, @"cpu":@64, @"detail":@"Watching · pauses at 33°"},
-                @{@"name":@"readme-heat", @"charge":@64, @"plug":@YES, @"adapter":@21.3, @"battery":@0, @"system":@21.3, @"heat":@YES, @"cpu":@91, @"detail":@"Paused · resumes at 30°"},
-                @{@"name":@"readme-hybrid", @"charge":@71, @"plug":@YES, @"adapter":@11.7, @"battery":@-6.2, @"system":@17.9, @"heat":@NO, @"cpu":@78, @"detail":@"Watching · pauses at 33°"}];
+                @{@"name":@"readme-charging", @"charge":@62, @"plug":@YES, @"adapter":@38.4, @"battery":@19.6, @"system":@18.8, @"heat":@NO, @"cpu":@64, @"detail":@"On, pauses at 33 °C"},
+                @{@"name":@"readme-heat", @"charge":@64, @"plug":@YES, @"adapter":@21.3, @"battery":@0, @"system":@21.3, @"heat":@YES, @"cpu":@91, @"detail":@"Paused until 30 °C"},
+                @{@"name":@"readme-hybrid", @"charge":@71, @"plug":@YES, @"adapter":@11.7, @"battery":@-6.2, @"system":@17.9, @"heat":@NO, @"cpu":@78, @"detail":@"On, pauses at 33 °C"}];
             for (NSDictionary *state in readme) {
                 BattPowerFlowView *power = c.powerFlowView;
                 power.chargePercent = [state[@"charge"] integerValue]; power.limitPercent = 80;
@@ -391,7 +391,7 @@ int main(int argc, const char *argv[]) {
         c.keepAwakeStatusTime = NSProcessInfo.processInfo.systemUptime;
         c.keepAwakeStatus = @YES;
         BattRefreshPopover(c,63,81);
-        assert([c.darkButton.title isEqual:@"Keep Awake · On"] && c.darkButton.enabled);
+        assert([c.darkButton.title isEqual:@"Keep Awake is on"] && c.darkButton.enabled);
         CGFloat awakeTitleWidth = [c.darkButton.title sizeWithAttributes:@{NSFontAttributeName:c.darkButton.font}].width;
         assert(awakeTitleWidth + (c.darkButton.image ? 27 : 0) + 12 <= NSWidth(c.darkButton.bounds));
         Capture(view,directory,@"awake-controls");

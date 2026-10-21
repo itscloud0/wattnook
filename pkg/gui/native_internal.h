@@ -208,18 +208,13 @@ void WattSetButtonPlain(NSButton *button, BOOL plain);
 void WattSetButtonGrouped(NSButton *button, BOOL grouped);
 void BattRecyclePopover(BattMenuController *controller);
 NSColor *WattSurfaceColor(BOOL lighter);
-// The popover's ground is a sky whose colour is the power state.
-typedef NS_ENUM(NSInteger, WattSky) {
-    WattSkyUnknown, WattSkyCharging, WattSkyHeld, WattSkyHeat, WattSkyBattery, WattSkyDischarge,
-};
-NSGradient *WattSkyGradient(WattSky sky);
+NSColor *WattGroundColor(void);
 // The 15-minute Mac-power strip, drawn from BattPowerFlowView's samples.
 @interface WattPowerStripView : NSView
 @property(nonatomic, assign) BattPowerFlowView *source;
 @end
-// Tiles sit on the sky as translucent white, one tone step, no border.
+// Groups sit one grey step above the ground, no border.
 NSColor *WattTileColor(BOOL highlighted);
-// Warnings in light amber: legible on every sky, including the sunset.
 NSColor *WattWarningColor(void);
 NSArray *WattMenuMetrics(void);
 BOOL WattMenuBatteryIcon(void);

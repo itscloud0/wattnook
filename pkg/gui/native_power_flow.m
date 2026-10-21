@@ -361,7 +361,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
 - (NSString *)view:(NSView *)view stringForToolTip:(NSToolTipTag)tag point:(NSPoint)point userData:(void *)data {
     (void)view; (void)tag; (void)point; (void)data;
     NSString *cycles = self.cycleCount >= 0 ?
-        [NSString stringWithFormat:@" · %ld charge cycles", (long)self.cycleCount] : @"";
+        [NSString stringWithFormat:@", %ld charge cycles", (long)self.cycleCount] : @"";
     return [NSString stringWithFormat:@"Full-charge capacity is %ld%% of the design capacity%@",
         (long)self.healthPercent, cycles];
 }
@@ -427,25 +427,32 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
         limit >= 0 && limit < 100 && self.chargePercent >= limit - 1;
     NSString *state = !self.hasTelemetry ? @"Power data unavailable" :
         (hybrid && !self.dischargingToLimit ? @"AC + battery" :
-         (self.heatPaused && self.pluggedIn ? @"Charging paused · heat" :
-         (self.topUpActive && self.pluggedIn ? @"Top Up · charging to 100%" :
+         (self.heatPaused && self.pluggedIn ? @"Paused while the battery cools" :
+         (self.topUpActive && self.pluggedIn ? @"Topping up to 100%" :
          (self.dischargingToLimit && self.pluggedIn && limit > 0 ?
-            [NSString stringWithFormat:@"Discharging to %ld%% · adapter on", (long)limit] :
+            [NSString stringWithFormat:@"Discharging to %ld%%", (long)limit] :
          (self.sailing && self.pluggedIn && limit > 0 ?
-            [NSString stringWithFormat:@"Sailing · charges again at %ld%%", (long)MAX(0, limit - self.sailingLevel)] :
+            [NSString stringWithFormat:@"Sailing, charges again at %ld%%", (long)MAX(0, limit - self.sailingLevel)] :
           (statusCharging ? @"Charging" :
            (atLimit ? @"Charge limit reached" : (adapter ? @"Plugged in" : @"On battery"))))))));
     NSString *chargeText = self.chargePercent < 0 ? @"—%" :
         [NSString stringWithFormat:@"%ld%%", (long)charge];
 
-    // A forecast's temperature: one light numeral, far larger than anything else.
-    Text(chargeText, NSMakeRect(29, 172, 240, 80), 66, NSFontWeightLight,
-         NSColor.labelColor, NSTextAlignmentLeft);
-    // Orange marks the heat pause on the state line only; temperatures stay
-    // neutral unless the CPU itself runs hot.
+    // One light numeral; the percent sign is small and muted beside it.
+    (void)chargeText;
+    NSMutableAttributedString *chargeLine = [[[NSMutableAttributedString alloc]
+        initWithString:self.chargePercent < 0 ? @"—" : [NSString stringWithFormat:@"%ld", (long)charge]
+            attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:66 weight:NSFontWeightLight],
+                         NSForegroundColorAttributeName:NSColor.labelColor}] autorelease];
+    [chargeLine addAttribute:NSKernAttributeName value:@3 range:NSMakeRange(chargeLine.length - 1, 1)];
+    [chargeLine appendAttributedString:[[[NSAttributedString alloc] initWithString:@"%"
+        attributes:@{NSFontAttributeName:[NSFont systemFontOfSize:26 weight:NSFontWeightLight],
+                     NSForegroundColorAttributeName:NSColor.secondaryLabelColor}] autorelease]];
+    [chargeLine drawAtPoint:NSMakePoint(29, 212 - chargeLine.size.height / 2)];
+    // Orange marks the heat pause on the state line only; green marks charging.
     Text(state, NSMakeRect(32, 162, 230, 18), 13, NSFontWeightRegular,
-         // The sunset sky already says "heat"; the line stays white to read on it.
-         self.heatPaused && self.pluggedIn ? NSColor.labelColor : NSColor.secondaryLabelColor,
+         self.heatPaused && self.pluggedIn ? WattWarningColor() :
+         (statusCharging ? NSColor.systemGreenColor : NSColor.secondaryLabelColor),
          NSTextAlignmentLeft);
     // Battery and processor temperatures side by side: Heat Protection acts
     // on the battery, while a hot fanless Mac is usually the processor.
@@ -583,7 +590,7 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
         Text(@"Mac", NSMakeRect(width - 74, 9, 50, 16),
              10, NSFontWeightMedium, muted, NSTextAlignmentCenter);
         if (adapter && !charging) {
-            Text(@"Battery held · 0 W", NSMakeRect(84, 9, width - 168, 17),
+            Text(@"Battery idle", NSMakeRect(84, 9, width - 168, 17),
                  10, NSFontWeightMedium, muted, NSTextAlignmentCenter);
         }
     }
@@ -608,8 +615,8 @@ static void FlowLabel(NSString *name, double watts, NSRect rect, NSTextAlignment
     for (NSInteger i = 0; i < count; i++) { double w = [flow powerSampleAt:i state:NULL]; peak = MAX(peak, w); sum += w; }
     NSDictionary *label = @{NSFontAttributeName:[NSFont systemFontOfSize:11 weight:NSFontWeightMedium],
                             NSForegroundColorAttributeName:muted};
-    [@"Mac power · last 15 min" drawAtPoint:NSMakePoint(0, NSHeight(self.bounds) - 15) withAttributes:label];
-    NSString *summary = count ? [NSString stringWithFormat:@"avg %.1f W · peak %.1f W", sum / count, peak] :
+    [@"Last 15 minutes" drawAtPoint:NSMakePoint(0, NSHeight(self.bounds) - 15) withAttributes:label];
+    NSString *summary = count ? [NSString stringWithFormat:@"Avg %.1f W    Peak %.1f W", sum / count, peak] :
         @"First bar in 10 s";
     NSDictionary *figure = @{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightMedium],
                              NSForegroundColorAttributeName:NSColor.whiteColor};

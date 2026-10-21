@@ -379,46 +379,46 @@ func (c *menuController) updateHeatProtection(conf config.Config, status *client
 
 func heatProtectionPresentation(enabled bool, status *client.HeatProtectionStatus) (string, string) {
 	if status.AdapterWarning != "" {
-		detail := "Charger not used · reconnect cable"
+		detail := "Charger not in use, reconnect it"
 		if strings.Contains(status.AdapterWarning, "5 V") {
-			detail = "Adapter at 5 V · reconnect cable"
+			detail = "Charger at 5 V, reconnect it"
 		}
 		return "Heat Protection: " + status.AdapterWarning, detail
 	}
 	if status.Fault || status.LastError != "" {
-		return "Heat Protection: stopped — " + status.LastError, "Stopped · see details"
+		return "Heat Protection: stopped — " + status.LastError, "Stopped, see details"
 	}
 	if !enabled {
 		if status.Mechanism == "adapter" {
-			return "Heat Protection: off — uses battery while hot; Apple limit stays active", "Off · temperature control"
+			return "Heat Protection: off — uses battery while hot; Apple limit stays active", "Off"
 		}
 		return "Heat Protection: off", "Off"
 	}
 	if status.Discharging {
 		// Draining never charges, so there is nothing to pause.
-		return "Heat Protection: not needed while discharging", "Standing by · discharging"
+		return "Heat Protection: not needed while discharging", "Off while discharging"
 	}
 	if status.Paused {
 		if status.Mechanism == "adapter" {
-			return "Heat Protection: cooling — running on battery", "Cooling · battery power"
+			return "Heat Protection: cooling — running on battery", "Cooling on battery"
 		}
 		// Name the state and the exit condition, not the feature.
-		return "Heat Protection: charging paused", fmt.Sprintf("Paused · resumes at %.0f°", status.ResumeTemperatureCelsius)
+		return "Heat Protection: charging paused", fmt.Sprintf("Paused until %.0f °C", status.ResumeTemperatureCelsius)
 	}
 	if status.ReserveBlocked {
 		if status.Mechanism == "adapter" {
-			return "Heat Protection: low battery — adapter restored; re-arms above 25%", "Low battery · AC restored"
+			return "Heat Protection: low battery — adapter restored; re-arms above 25%", "Low battery, adapter on"
 		}
-		return "Heat Protection: adapter can't keep up and the battery is low — charging despite heat; pauses again at 30%", "Low battery · charging"
+		return "Heat Protection: adapter can't keep up and the battery is low — charging despite heat; pauses again at 30%", "Low battery, charging"
 	}
 	title := fmt.Sprintf("Heat Protection: on (%.0f°C → %.0f°C)", status.PauseTemperatureCelsius, status.ResumeTemperatureCelsius)
 	if status.Mechanism == "adapter" {
 		title += " — uses battery while hot"
 	}
 	if status.Mechanism == "adapter" {
-		return title, fmt.Sprintf("On · %.0f° / %.0f°", status.PauseTemperatureCelsius, status.ResumeTemperatureCelsius)
+		return title, fmt.Sprintf("On, %.0f–%.0f °C", status.PauseTemperatureCelsius, status.ResumeTemperatureCelsius)
 	}
-	return title, fmt.Sprintf("Watching · pauses at %.0f°", status.PauseTemperatureCelsius)
+	return title, fmt.Sprintf("On, pauses at %.0f °C", status.PauseTemperatureCelsius)
 }
 
 func (c *menuController) updateCalibration(status *calibration.Status) {
