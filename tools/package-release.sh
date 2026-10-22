@@ -12,4 +12,7 @@ WATTNOOK_VERSION="$1" "$project_dir/tools/build-wattnook-app.sh" "$out/WattNook.
 codesign --force --deep --sign - "$out/WattNook.app"
 codesign --verify --deep --strict "$out/WattNook.app"
 ditto -c -k --keepParent "$out/WattNook.app" "$out/WattNook-$1.zip"
+# Keep only the zip: a second WattNook.app here shows up next to the
+# installed one in Spotlight and Launchpad.
+rm -rf "$out/WattNook.app"
 shasum -a 256 "$out/WattNook-$1.zip"

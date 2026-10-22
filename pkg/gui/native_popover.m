@@ -426,7 +426,8 @@ static void Redisplay(NSView *view) {
 }
 - (void)applyTheme {
     if (WattGlassTheme() && !_glassViews.count) {
-        [self glass:@[[NSValue valueWithRect:NSMakeRect(12, 446, 376, 36)]]
+        // Follow the tabs: the view may be at the shorter Battery height here.
+        [self glass:@[[NSValue valueWithRect:NSMakeRect(12, NSMinY(_batteryTab.frame) - 4, 376, 36)]]
             behind:@[_batteryTab, _systemTab, _storageTab] in:self];
         NSMutableArray *buttons = [NSMutableArray array];
         NSMutableArray *rects = [NSMutableArray array];

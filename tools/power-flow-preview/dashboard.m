@@ -621,6 +621,14 @@ int main(int argc, const char *argv[]) {
             [FindButton(view,@"System") performClick:nil];
             Capture(view,directory,@"polish-glass-system");
             [FindButton(view,@"Battery") performClick:nil];
+            // Rebuilding at the shorter Battery height keeps the tab glass behind the tabs.
+            for (NSNumber *unavailable in @[@YES,@NO]) {
+                heatFixture.hidden = unavailable.boolValue;
+                BattRefreshPopover(c,63,81);
+                for (NSView *container in [view valueForKey:@"_glassViews"])
+                    if (container.superview == view)
+                        assert(NSContainsRect(container.frame,FindButton(view,@"Battery").frame));
+            }
             Capture(view,directory,@"polish-glass-battery");
             assert(c.darkButton.action == @selector(toggleKeepAwakeFromPopover:));
             assert(!c.darkButton.hidden);
