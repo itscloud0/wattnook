@@ -26,7 +26,14 @@ const (
 	PulseDuration = 500 * time.Millisecond
 	MinTarget     = 5
 	MaxTarget     = 99
+	// adapterReconnecting is the CHIE value macOS itself sets for a moment
+	// while a charger drops out and reconnects.
+	adapterReconnecting = 0x10
 )
+
+// ErrAdapterBusy means macOS was handling a charger drop-out, so nothing was
+// pulsed. The caller may simply try again later.
+var ErrAdapterBusy = errors.New("charger reconnecting; adapter untouched")
 
 // Preferences owns com.apple.smartcharging.topoffprotection in the root
 // CurrentUser/AnyHost scope.
@@ -52,7 +59,7 @@ func adapterValue(c SMC) (byte, error) {
 	if v.Key != AdapterKey || v.DataType != "hex_" || len(v.Bytes) != 1 {
 		return 0, errors.New("CHIE encoding changed")
 	}
-	if v.Bytes[0] != 0 && v.Bytes[0] != 8 {
+	if v.Bytes[0] != 0 && v.Bytes[0] != 8 && v.Bytes[0] != adapterReconnecting {
 		return 0, fmt.Errorf("unknown CHIE flags %#02x; adapter untouched", v.Bytes[0])
 	}
 	return v.Bytes[0], nil
@@ -62,8 +69,16 @@ func adapterValue(c SMC) (byte, error) {
 // the inhibit write reports an error, and is verified by readback.
 func Pulse(c SMC, sleep func(time.Duration)) (err error) {
 	v, err := adapterValue(c)
+	// A drop-out usually settles within a second or two.
+	for i := 0; err == nil && v == adapterReconnecting && i < 4; i++ {
+		sleep(PulseDuration)
+		v, err = adapterValue(c)
+	}
 	if err != nil {
 		return err
+	}
+	if v == adapterReconnecting {
+		return ErrAdapterBusy
 	}
 	if v != 0 {
 		return errors.New("adapter input already inhibited; pulse skipped")
@@ -73,7 +88,8 @@ func Pulse(c SMC, sleep func(time.Duration)) (err error) {
 		if restoreErr == nil {
 			var after byte
 			after, restoreErr = adapterValue(c)
-			if restoreErr == nil && after != 0 {
+			// A drop-out right after the pulse is macOS's, not ours.
+			if restoreErr == nil && after != 0 && after != adapterReconnecting {
 				restoreErr = errors.New("CHIE restoration readback disagrees")
 			}
 		}

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charlie0129/batt/pkg/chargehold"
 	"github.com/charlie0129/batt/pkg/config"
 )
 
@@ -610,5 +611,21 @@ func TestHeatWaitsForAdapterAndReserveIgnoresBatteryDrain(t *testing.T) {
 	h.reconcile(true, 33, 30)
 	if len(holder.retargets) != 1 || holder.retargets[0] != 24 {
 		t.Fatalf("no pause on AC: %v", holder.retargets)
+	}
+}
+
+// A pulse that lands during a charger drop-out is retried, never a fault:
+// a fault would leave a hot battery charging until re-enabled by hand.
+func TestChargerDropOutDefersHoldWithoutFault(t *testing.T) {
+	h, holder, _ := newHoldFixture(heatHoldSample{Temperature: 38, Percent: 19, PluggedIn: true})
+	holder.failHold = chargehold.ErrAdapterBusy
+	h.reconcile(true, 33, 30)
+	if status := getHeatProtectionStatusUnchecked(); h.fault != "" || status.Fault || status.Reason != "charger reconnecting" {
+		t.Fatalf("fault=%q status=%+v", h.fault, status)
+	}
+	holder.failHold = nil
+	h.reconcile(true, 33, 30)
+	if len(holder.holds) != 2 || !holder.active || holder.holds[1] != 19 {
+		t.Fatalf("not retried: %v", holder.holds)
 	}
 }

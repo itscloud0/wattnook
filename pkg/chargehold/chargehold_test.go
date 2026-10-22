@@ -267,3 +267,30 @@ func TestRetargetKeepsSnapshotAndPulsesOnce(t *testing.T) {
 		t.Fatalf("release err=%v ops=%v", err, prefs.ops)
 	}
 }
+
+// macOS sets CHIE to 0x10 while a charger drops out: wait for it, and if it
+// does not settle, report a retryable error without touching the adapter.
+func TestPulseWaitsOutAChargerDropOut(t *testing.T) {
+	smc := &fakeSMC{value: 0x10}
+	sleeps := 0
+	settle := func(time.Duration) {
+		if sleeps++; sleeps == 2 {
+			smc.value = 0
+		}
+	}
+	if err := Pulse(smc, settle); err != nil || !reflect.DeepEqual(smc.writes, []byte{8, 0}) {
+		t.Fatalf("settled drop-out: err=%v writes=%v", err, smc.writes)
+	}
+	stuck := &fakeSMC{value: 0x10}
+	if err := Pulse(stuck, func(time.Duration) {}); !errors.Is(err, ErrAdapterBusy) || len(stuck.writes) != 0 {
+		t.Fatalf("stuck drop-out: err=%v writes=%v", err, stuck.writes)
+	}
+}
+
+func TestBusyHoldLeavesNothingBehind(t *testing.T) {
+	h, prefs, smc, _ := newHolder(t)
+	smc.value = 0x10
+	if err := h.Hold(30); !errors.Is(err, ErrAdapterBusy) || h.Active() || prefs.held != 0 {
+		t.Fatalf("err=%v active=%v held=%d", err, h.Active(), prefs.held)
+	}
+}

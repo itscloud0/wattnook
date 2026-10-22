@@ -178,9 +178,12 @@ func (h *nativeHeatHold) release() error {
 	if !h.holder.Active() {
 		return nil
 	}
-	if err := h.guardAdapterContract(h.holder.Release); err != nil {
+	if err := h.guardAdapterContract(h.holder.Release); err != nil && !errors.Is(err, chargehold.ErrAdapterBusy) {
 		h.fault = err.Error()
 		return err
+	} else if err != nil {
+		// Preferences are restored; the reconnecting charger re-evaluates them.
+		logrus.WithError(err).Warn("charge hold released without a pulse")
 	}
 	h.lastTransition = time.Now()
 	h.target = 0
@@ -436,6 +439,12 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 		}
 		return h.holder.Hold(target)
 	})
+	if errors.Is(err, chargehold.ErrAdapterBusy) {
+		// Nothing changed; the next loop tries again.
+		status.Reason = "charger reconnecting"
+		logrus.WithError(err).Warn("charge hold deferred")
+		return
+	}
 	if err != nil {
 		h.fault = err.Error()
 		logrus.WithError(err).Error("charge hold")
