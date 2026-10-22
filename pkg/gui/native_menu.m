@@ -472,6 +472,8 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     }
     BOOL percent = [metrics containsObject:@"Battery"];
     BOOL icon = WattMenuBatteryIcon() || (labels.count == 0 && !percent);
+    // With the icon on, the number sits inside it, as macOS draws it.
+    if (percent && icon && self.batteryIconShowsPercent) percent = NO;
     CGFloat fontSize = labels.count > 1 ? 8.5 : 11;
     NSDictionary *attributes = @{
         NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:fontSize weight:NSFontWeightMedium],
@@ -589,8 +591,10 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     NSImage *mask = overlayName == nil ? nil :
         [controlCenter imageForResource:[overlayName stringByAppendingString:@"-mask"]];
     BOOL lowPower = NSProcessInfo.processInfo.lowPowerModeEnabled;
-    NSImage *image = WattSystemMenuBattery(charge,pluggedIn,charging,present,needsService,lowPower);
+    BOOL percentInIcon = WattMenuBatteryIcon() && [WattMenuMetrics() containsObject:@"Battery"];
+    NSImage *image = WattSystemMenuBattery(charge,pluggedIn,charging,present,needsService,lowPower,percentInIcon);
     BOOL nativeImage = image != nil;
+    self.batteryIconShowsPercent = nativeImage && known && percentInIcon;
     if (!image && known && outline != nil && cap != nil) {
         image = [[[NSImage alloc] initWithSize:NSMakeSize(25, 14)] autorelease];
         [image lockFocus];

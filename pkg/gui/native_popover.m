@@ -643,6 +643,7 @@ static void Redisplay(NSView *view) {
     if (metrics.count == 0 && !icon) icon = YES; // Keep a way back into the app.
     [NSUserDefaults.standardUserDefaults setObject:metrics forKey:@"WattNookMenuMetrics"];
     [NSUserDefaults.standardUserDefaults setBool:icon forKey:@"WattNookMenuBatteryIcon"];
+    BattUpdateBattery(self.controller); // re-renders the icon, with or without its number
     [self.controller refreshStatusImage]; [self refreshCPU:_cpu memory:_memory];
 }
 - (void)selectPage {

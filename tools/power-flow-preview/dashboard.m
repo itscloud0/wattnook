@@ -28,7 +28,7 @@ static void CheckNativeBatteryArtwork(void) {
     Class cls = NSClassFromString(@"BUIImage");
     id cache = ((id(*)(id,SEL))objc_msgSend)(cls,NSSelectorFromString(@"sharedBUIImageCache"));
     SEL selector = NSSelectorFromString(@"_modernBatteryImageForLevel:charging:pluggedIn:noBattery:needsReplacement:lowPowerMode:showPercentage:useRed:");
-    for (NSNumber *charge in @[@0,@1,@10,@20,@21,@50,@80,@99,@100]) {
+    for (NSNumber *charge in @[@0,@1,@10,@20,@21,@50,@80,@99,@100]) for (NSNumber *percent in @[@NO,@YES]) {
         for (NSArray *flags in @[@[@NO,@NO,@YES,@NO,@NO],@[@YES,@YES,@YES,@NO,@NO],
                 @[@YES,@NO,@YES,@NO,@NO],@[@NO,@NO,@YES,@NO,@YES],
                 @[@NO,@NO,@NO,@NO,@NO],@[@NO,@NO,@YES,@YES,@NO]]) {
@@ -36,11 +36,11 @@ static void CheckNativeBatteryArtwork(void) {
             BOOL service=[flags[3] boolValue], low=[flags[4] boolValue];
             NSImage *expected = ((id(*)(id,SEL,double,BOOL,BOOL,BOOL,BOOL,BOOL,BOOL,BOOL))objc_msgSend)(
                 cache,selector,charge.doubleValue/100.0,present&&plugged&&charging,present&&plugged,
-                !present,present&&service,low,NO,present&&!plugged&&charge.integerValue<=20);
-            AssertSameBatteryPixels(WattSystemMenuBattery(charge.integerValue,plugged,charging,present,service,low),expected);
+                !present,present&&service,low,present&&percent.boolValue,present&&!plugged&&charge.integerValue<=20);
+            AssertSameBatteryPixels(WattSystemMenuBattery(charge.integerValue,plugged,charging,present,service,low,percent.boolValue),expected);
         }
     }
-    assert(WattSystemMenuBattery(-1,NO,NO,YES,NO,NO) == nil);
+    assert(WattSystemMenuBattery(-1,NO,NO,YES,NO,NO,YES) == nil);
 }
 
 // Isolated native render + behavior checks. No daemon callbacks or process quits.
@@ -249,7 +249,8 @@ int main(int argc, const char *argv[]) {
                         present:state!=6 needsService:state==5];
                     if (state == 4) {
                         // Fixture only: do not toggle the host's Low Power Mode.
-                        c.batteryIcon = WattSystemMenuBattery(48,NO,NO,YES,NO,YES);
+                        c.batteryIcon = WattSystemMenuBattery(48,NO,NO,YES,NO,YES,YES);
+                        c.batteryIconShowsPercent = YES;
                         c.batteryIconHasColor = YES;
                         [c refreshStatusImage];
                     }
@@ -493,12 +494,24 @@ int main(int argc, const char *argv[]) {
         assert(c.statusItem.button.image.size.width == withoutPercent);
         [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"WattNookMenuBatteryIcon"];
         [c refreshStatusImage];
-        assert(withoutPercent-c.statusItem.button.image.size.width >= 34);
+        CGFloat withoutIcon = c.statusItem.button.image.size.width;
+        assert(withoutPercent-withoutIcon >= 34);
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookMenuBatteryIcon"];
         [NSUserDefaults.standardUserDefaults setObject:@[@"CPU",@"RAM",@"SSD",@"Battery"] forKey:@"WattNookMenuMetrics"];
-        [c refreshStatusImage];
-        assert(c.statusItem.button.image.size.width-withoutPercent >= 14);
+        [c setLiveStatusCharge:48 pluggedIn:NO charging:NO heatPaused:NO];
+        if (WattNativeBatteryRendererAvailable()) {
+            // macOS 27 draws the number inside its own battery: no extra width.
+            assert(c.batteryIconShowsPercent && c.statusItem.button.image.size.width == withoutPercent);
+            [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"WattNookMenuBatteryIcon"];
+            [c setLiveStatusCharge:48 pluggedIn:NO charging:NO heatPaused:NO];
+            assert(!c.batteryIconShowsPercent && c.statusItem.button.image.size.width-withoutIcon >= 14);
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookMenuBatteryIcon"];
+        } else {
+            assert(c.statusItem.button.image.size.width-withoutPercent >= 14);
+        }
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookMenuMetrics"];
+        [c setLiveStatusCharge:48 pluggedIn:NO charging:NO heatPaused:NO];
+        assert(!c.batteryIconShowsPercent);
         BattRefreshPopover(c,63,81);
         [system performClick:nil]; assert(c.powerFlowView.hiddenOrHasHiddenAncestor);
         NSArray *consumerRows = [view valueForKey:@"_rows"];

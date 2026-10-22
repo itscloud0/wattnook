@@ -26,7 +26,7 @@ static Class BatteryImageClass(void) {
 BOOL WattNativeBatteryRendererAvailable(void) { return BatteryImageClass() != Nil; }
 
 NSImage *WattSystemMenuBattery(NSInteger charge, BOOL pluggedIn, BOOL charging,
-                             BOOL present, BOOL needsService, BOOL lowPower) {
+                             BOOL present, BOOL needsService, BOOL lowPower, BOOL showPercentage) {
     Class cls = BatteryImageClass();
     if (!cls || !NSThread.isMainThread) return nil;
     // A failed reading is not evidence of a missing physical battery. Let the
@@ -40,7 +40,7 @@ NSImage *WattSystemMenuBattery(NSInteger charge, BOOL pluggedIn, BOOL charging,
         SEL render = NSSelectorFromString(@"_modernBatteryImageForLevel:charging:pluggedIn:noBattery:needsReplacement:lowPowerMode:showPercentage:useRed:");
         NSImage *image = ((id(*)(id,SEL,double,BOOL,BOOL,BOOL,BOOL,BOOL,BOOL,BOOL))objc_msgSend)(
             cache, render, level, known && pluggedIn && charging, known && pluggedIn,
-            !present, known && needsService, lowPower, NO, known && !pluggedIn && charge <= 20);
+            !present, known && needsService, lowPower, known && showPercentage, known && !pluggedIn && charge <= 20);
         if (![image isKindOfClass:NSImage.class] || image.size.width <= 0 || image.size.width > 40 ||
             image.size.height <= 0 || image.size.height > 24) return nil;
         // Do not mutate Apple's shared/cache-owned NSImage.

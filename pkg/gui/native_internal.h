@@ -17,7 +17,7 @@ void WattReadSleepStatus(NSString *executable, NSArray<NSString *> *arguments, N
 NSString *WattSleepBlockerReport(void);
 BOOL WattNativeBatteryRendererAvailable(void);
 NSImage *WattSystemMenuBattery(NSInteger charge, BOOL pluggedIn, BOOL charging,
-                             BOOL present, BOOL needsService, BOOL lowPower);
+                             BOOL present, BOOL needsService, BOOL lowPower, BOOL showPercentage);
 NSImageView *WattCreateBatteryColorView(void);
 
 typedef struct {
@@ -87,6 +87,8 @@ enum { WattHistoryCapacity = 90 };
 @property(nonatomic, retain) NSImage *batteryIcon;
 @property(nonatomic, retain) NSImageView *batteryColorView;
 @property(nonatomic, assign) BOOL batteryIconHasColor;
+// The icon carries the charge number itself (Apple's percentage style).
+@property(nonatomic, assign) BOOL batteryIconShowsPercent;
 @property(nonatomic, retain) NSMenu *menu;
 @property(nonatomic, retain) NSMutableDictionary<NSNumber *, NSMenuItem *> *items;
 @property(nonatomic, retain) NSTimer *timer;
