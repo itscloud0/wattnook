@@ -86,3 +86,55 @@ func TestIgnoredChargerWarnsUntilReconnect(t *testing.T) {
 		t.Fatal("warning kept after reconnect")
 	}
 }
+
+func TestParseDetachCountsSumsPorts(t *testing.T) {
+	ports := `"UsbHvcHvcIndex"=3 "PortControllerInfo" = ({"PortControllerDetachCount"=1},{"PortControllerDetachCount"=366})`
+	if c, err := parseAdapterContract(ports); err != nil || c.Detaches != 367 {
+		t.Fatalf("%+v %v", c, err)
+	}
+	if c, _ := parseAdapterContract(`"UsbHvcHvcIndex"=3`); c.Detaches != -1 {
+		t.Fatalf("missing counter read as %d", c.Detaches)
+	}
+}
+
+// A charger that drops out every few seconds is invisible to a 5 s loop, so
+// the warning comes from the port's detach counter.
+func TestChargerThatKeepsDisconnectingWarnsUntilStable(t *testing.T) {
+	h, _, _ := newHoldFixture(heatHoldSample{Temperature: 25, Percent: 50, PluggedIn: true})
+	detaches := 300
+	h.detachCount = func() (int, error) { return detaches, nil }
+	// Each step is one check, 30 s after the last.
+	step := func() {
+		for i := range h.detaches {
+			h.detaches[i].at = h.detaches[i].at.Add(-30 * time.Second)
+		}
+		h.detachCheckedAt = time.Time{}
+		h.watchDetaches()
+	}
+	step()
+	detaches += 2 // a replug by hand
+	step()
+	if h.adapterUnstable {
+		t.Fatal("a single replug warned")
+	}
+	for range 4 {
+		detaches += 2
+		step()
+	}
+	h.reconcile(true, 33, 30)
+	if !strings.Contains(getHeatProtectionStatusUnchecked().AdapterWarning, "keeps disconnecting") {
+		t.Fatalf("no warning: %+v", getHeatProtectionStatusUnchecked())
+	}
+	// Quiet for under a window: still warns; a full quiet window clears it.
+	step()
+	step()
+	if !h.adapterUnstable {
+		t.Fatal("cleared before a quiet window")
+	}
+	for range 4 {
+		step()
+	}
+	if h.adapterUnstable {
+		t.Fatal("still warning after a quiet window")
+	}
+}

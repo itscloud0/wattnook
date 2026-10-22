@@ -58,6 +58,11 @@ type nativeHeatHold struct {
 	ignoredSince   time.Time
 	// reserveLatched blocks heat holds after a reserve release until rearm.
 	reserveLatched bool
+	// USB-C detach counts sampled to spot a charger that keeps dropping out.
+	detachCount     func() (int, error)
+	detaches        []detachSample
+	detachCheckedAt time.Time
+	adapterUnstable bool
 	// Why the active hold exists and where it is.
 	forHeat   bool
 	forSail   bool
@@ -162,6 +167,7 @@ func initializeHeatHold(configPath string) {
 			}
 		},
 		contract:    readAdapterContract,
+		detachCount: readDetachCount,
 		sleep:       time.Sleep,
 		pulseSettle: 15 * time.Second,
 	}
@@ -205,6 +211,9 @@ func (h *nativeHeatHold) publish(status HeatProtectionStatus) {
 		status.LastError = h.fault
 	}
 	status.AdapterWarning = h.adapterWarning
+	if status.AdapterWarning == "" && h.adapterUnstable {
+		status.AdapterWarning = adapterUnstableWarning
+	}
 	heatProtectionMu.Lock()
 	heatProtectionStatus = status
 	heatProtectionMu.Unlock()
@@ -247,6 +256,7 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 	if !enabled && custom == 0 && sailing == 0 && !topUp && !draining {
 		h.forHeat, h.forSail, h.forDrain, h.forLimit, h.sailArmed = false, false, false, 0, false
 		h.refreshAdapterWarning(true)
+		h.detaches, h.adapterUnstable = nil, false
 		if err := h.release(); err != nil {
 			logrus.WithError(err).Error("charge hold release")
 		}
@@ -258,6 +268,7 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 		return
 	}
 	h.refreshAdapterWarning(sample.PluggedIn)
+	h.watchDetaches()
 	temperature := sample.Temperature
 	if enabled {
 		status.TemperatureCelsius = &temperature
@@ -292,11 +303,17 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 	if sample.Percent >= heatHoldRearm {
 		h.reserveLatched = false
 	}
+	if hot && unplugged && !(h.forHeat && active) {
+		// On battery a hold changes nothing; start one when the adapter is back.
+		hot = false
+		status.Reason = "on battery"
+	}
 	if hot {
 		heldForHeat := h.forHeat && active
-		// Below the hold point means the adapter cannot cover the load; the
-		// fraction drained down to the hold point is expected.
-		draining := sample.BatteryAmps < heatDrainingAmps && sample.Percent < h.target
+		// Below the hold point on AC means the adapter cannot cover the load;
+		// the fraction drained down to the hold point is expected. On battery
+		// the battery drains anyway, which says nothing about the adapter.
+		draining := !unplugged && sample.BatteryAmps < heatDrainingAmps && sample.Percent < h.target
 		switch {
 		case heldForHeat && sample.Percent < heatHoldReserve && draining:
 			// The adapter cannot cover the load: let the battery recover.

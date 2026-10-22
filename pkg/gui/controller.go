@@ -380,8 +380,11 @@ func (c *menuController) updateHeatProtection(conf config.Config, status *client
 func heatProtectionPresentation(enabled bool, status *client.HeatProtectionStatus) (string, string) {
 	if status.AdapterWarning != "" {
 		detail := "Charger not in use, reconnect it"
-		if strings.Contains(status.AdapterWarning, "5 V") {
+		switch {
+		case strings.Contains(status.AdapterWarning, "5 V"):
 			detail = "Charger at 5 V, reconnect it"
+		case strings.Contains(status.AdapterWarning, "keeps disconnecting"):
+			detail = "Charger keeps dropping out"
 		}
 		return "Heat Protection: " + status.AdapterWarning, detail
 	}
@@ -409,7 +412,8 @@ func heatProtectionPresentation(enabled bool, status *client.HeatProtectionStatu
 		if status.Mechanism == "adapter" {
 			return "Heat Protection: low battery — adapter restored; re-arms above 25%", "Low battery, adapter on"
 		}
-		return "Heat Protection: adapter can't keep up and the battery is low — charging despite heat; pauses again at 30%", "Low battery, charging"
+		// The battery is low and draining on AC: it may charge while hot.
+		return "Heat Protection: battery low — charging is allowed despite heat until the battery recovers", "Low battery, pause off"
 	}
 	title := fmt.Sprintf("Heat Protection: on (%.0f°C → %.0f°C)", status.PauseTemperatureCelsius, status.ResumeTemperatureCelsius)
 	if status.Mechanism == "adapter" {

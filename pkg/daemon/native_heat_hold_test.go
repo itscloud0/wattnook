@@ -587,3 +587,28 @@ func TestPulseBlipDoesNotEndDischarge(t *testing.T) {
 		t.Fatal("discharge continued after a real unplug")
 	}
 }
+
+// On battery a hold changes nothing, and a battery draining there says
+// nothing about the adapter, so neither starts a heat pause nor the reserve.
+func TestHeatWaitsForAdapterAndReserveIgnoresBatteryDrain(t *testing.T) {
+	h, holder, s := newHoldFixture(heatHoldSample{Temperature: 30, Percent: 40, PluggedIn: true})
+	h.customLimit = func() int { return 75 }
+	h.reconcile(true, 33, 30)
+	if len(holder.holds) != 1 || holder.holds[0] != 75 {
+		t.Fatalf("limit hold: %v", holder.holds)
+	}
+	s.PluggedIn, s.Temperature, s.Percent, s.BatteryAmps = false, 34, 26, -1.5
+	h.reconcile(true, 33, 30)
+	s.Percent = 24
+	h.reconcile(true, 33, 30)
+	status := getHeatProtectionStatusUnchecked()
+	if len(holder.retargets) != 0 || status.ReserveBlocked || h.reserveLatched {
+		t.Fatalf("on battery: retargets=%v status=%+v", holder.retargets, status)
+	}
+	// Back on AC and still hot: pause at the charge.
+	s.PluggedIn, s.BatteryAmps = true, 0
+	h.reconcile(true, 33, 30)
+	if len(holder.retargets) != 1 || holder.retargets[0] != 24 {
+		t.Fatalf("no pause on AC: %v", holder.retargets)
+	}
+}

@@ -38,6 +38,8 @@ func TestChargeHoldHeatPresentationNamesState(t *testing.T) {
 		{"off", false, client.HeatProtectionStatus{Mechanism: "charge-hold"}, "Off"},
 		{"watching", true, client.HeatProtectionStatus{Mechanism: "charge-hold", PauseTemperatureCelsius: 33, ResumeTemperatureCelsius: 30}, "On, pauses at 33 °C"},
 		{"paused", true, client.HeatProtectionStatus{Mechanism: "charge-hold", Paused: true, PauseTemperatureCelsius: 33, ResumeTemperatureCelsius: 30}, "Paused until 30 °C"},
+		{"low battery", true, client.HeatProtectionStatus{Mechanism: "charge-hold", ReserveBlocked: true}, "Low battery, pause off"},
+		{"unstable charger", true, client.HeatProtectionStatus{Mechanism: "charge-hold", AdapterWarning: "The charger keeps disconnecting and reconnecting"}, "Charger keeps dropping out"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, detail := heatProtectionPresentation(tc.enabled, &tc.status); detail != tc.detail {
