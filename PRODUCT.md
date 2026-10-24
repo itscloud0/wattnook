@@ -300,3 +300,9 @@ Next acceptance: physical key/trackpad/mouse wake and repeated real ChatGPT wake
 - Status item ordering uses `BattThermalCombinedStatus` as its `autosaveName`. Public AppKit offers no always-rightmost position guarantee; user Command-drag placement is preserved by macOS. Startup order must not be described as placement control.
 - `go test ./...` passes. The isolated dashboard harness verifies counter reset/zero-time handling, tabs, keyboard limit commit, animation start/stop, empty telemetry and seven full-popover power states (including inconsistent readings). Internal-drive counters were verified on this Mac. Final native captures are in `/tmp/wattnook-dashboard-renders-final/`; mock values are illustrative.
 - Installed A+C bundle at `~/Applications/WattNook.app`; old bundle retained at `/tmp/WattNook-before-ac-20260930.app`. Daemon, socket and configured charge limit unchanged. Computer-use host timed out twice, so live pointer interaction was not verified; native controls were tested directly by the isolated harness.
+
+## Keep Awake modes — 2026-10-25
+
+- The Keep Awake button opens a menu: Off, On, On when plugged in.
+- "On when plugged in" switches macOS's system-wide SleepDisabled with the power source: on as soon as a charger is connected, off 30 s after unplugging, so a charger drop-out never lets a closed Mac sleep mid-task. `pmset disablesleep` has no per-power-source variant, so WattNook (the GUI) does the switching and it only happens while WattNook runs.
+- Automatic switches call the KeepAwake helper with `--no-prompt`: they use only the installed sudo rule and never open a password dialog. A failure shows inline and retries after 5 minutes. A manual Off/On (or the status-menu toggle) ends the automatic mode.

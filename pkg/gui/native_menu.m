@@ -120,6 +120,7 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     [_heatButton release];
     [_darkButton release];
     [_keepAwakeStatus release];
+    [_keepAwakeTarget release];
     [_lidGuard release];
     [_keepAwakeError release];
     [_lidGuardError release];
@@ -333,10 +334,62 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     battMenuAction(_handle, item, NO);
 }
 
-- (void)toggleKeepAwakeFromPopover:(NSButton *)sender {
-    (void)sender;
-    [self toggleKeepAwake];
+// Off, On, or On when plugged in, from the popover's Keep Awake button.
+- (void)showKeepAwakeOptions:(NSButton *)sender {
+    BOOL follows = WattKeepAwakeFollowsPower(), on = self.keepAwakeStatus.boolValue;
+    NSMenu *menu = [[[NSMenu alloc] initWithTitle:@"Keep Awake"] autorelease];
+    NSArray *titles = @[@"Off", @"On", @"On when plugged in"];
+    for (NSInteger mode = 0; mode < 3; mode++) {
+        NSMenuItem *item = [menu addItemWithTitle:titles[mode] action:@selector(selectKeepAwakeMode:) keyEquivalent:@""];
+        item.target = self; item.tag = mode;
+        item.state = (mode == 2 ? follows : !follows && self.keepAwakeStatus && on == (mode == 1))
+            ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+    [menu itemAtIndex:2].toolTip = @"Sleep stays off while a charger is connected and returns 30 seconds after you unplug.";
+    [self showMenu:menu fromButton:sender];
+}
+
+- (void)selectKeepAwakeMode:(NSMenuItem *)sender {
+    if (self.keepAwakeChanging || self.keepAwakeTogglePending) return;
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    if (sender.tag < 2) {
+        [defaults removeObjectForKey:@"WattNookKeepAwakeMode"];
+        self.keepAwakeTarget = @(sender.tag == 1);
+    } else {
+        if (![defaults boolForKey:@"WattNookKeepAwakeWarningAccepted"]) {
+            NSAlert *confirm = [[[NSAlert alloc] init] autorelease];
+            confirm.messageText = @"Keep the Mac awake whenever it is plugged in?";
+            confirm.informativeText = @"While a charger is connected, sleep is disabled for the entire Mac, also with the lid closed. Sleep returns 30 seconds after you unplug, while WattNook is running. Switching happens without a password only when WattNook's sleep-toggle rule is installed.";
+            [confirm addButtonWithTitle:@"Turn On"];
+            [confirm addButtonWithTitle:@"Cancel"];
+            if ([confirm runModal] != NSAlertFirstButtonReturn) return;
+            [defaults setBool:YES forKey:@"WattNookKeepAwakeWarningAccepted"];
+        }
+        [defaults setObject:@"plugged" forKey:@"WattNookKeepAwakeMode"];
+        self.keepAwakeUnpluggedSince = 0;
+        self.keepAwakeRetryAfter = 0;
+        self.keepAwakeTarget = @(self.powerFlowView.pluggedIn);
+    }
+    self.keepAwakeQuiet = NO;
+    self.keepAwakeTogglePending = YES;
+    [self requestKeepAwakeStatus];
     [self refreshPopoverControls];
+}
+
+// In "On when plugged in", follow the charger: on at once, off only after
+// the unplugged grace period. Failures back off instead of retrying each poll.
+- (void)followPowerForKeepAwake:(BOOL)pluggedIn {
+    if (!WattKeepAwakeFollowsPower() || ![self keepAwakeToolPath]) { self.keepAwakeUnpluggedSince = 0; return; }
+    NSTimeInterval now = NSProcessInfo.processInfo.systemUptime;
+    if (pluggedIn) self.keepAwakeUnpluggedSince = 0;
+    else if (self.keepAwakeUnpluggedSince == 0) self.keepAwakeUnpluggedSince = now;
+    BOOL wanted = WattKeepAwakeWanted(pluggedIn, pluggedIn ? 0 : now-self.keepAwakeUnpluggedSince);
+    if (!self.keepAwakeStatus || self.keepAwakeStatus.boolValue == wanted || now < self.keepAwakeRetryAfter ||
+        self.keepAwakeChanging || self.keepAwakeTogglePending || self.keepAwakeStatusReading) return;
+    self.keepAwakeTarget = @(wanted);
+    self.keepAwakeQuiet = YES;
+    self.keepAwakeTogglePending = YES;
+    [self requestKeepAwakeStatus];
 }
 
 - (void)quitFeaturedApp:(NSButton *)sender {
@@ -691,6 +744,7 @@ static CGFloat WattStackWidth(NSArray *labels) {
                 heatPaused:(BOOL)heatPaused present:(BOOL)present needsService:(BOOL)needsService {
     BOOL known = charge >= 0 && present;
     charge = known ? MAX(0, MIN(100, charge)) : -1;
+    if (known) [self followPowerForKeepAwake:pluggedIn];
     NSBundle *controlCenter = [NSBundle bundleWithPath:@"/System/Library/CoreServices/ControlCenter.app"];
     NSImage *outline = [controlCenter imageForResource:@"battery-outline"];
     NSImage *cap = [controlCenter imageForResource:@"battery-cap"];
@@ -853,6 +907,8 @@ static CGFloat WattStackWidth(NSArray *labels) {
 
 - (void)toggleKeepAwake {
     if (self.keepAwakeChanging || self.keepAwakeTogglePending) return;
+    // Switching by hand ends "On when plugged in".
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookKeepAwakeMode"];
     NSString *tool = [self keepAwakeToolPath];
     if (![[NSFileManager defaultManager] isExecutableFileAtPath:tool]) {
         NSAlert *alert = [[[NSAlert alloc] init] autorelease];
@@ -869,13 +925,19 @@ static CGFloat WattStackWidth(NSArray *labels) {
 - (void)performKeepAwakeToggle {
     if (self.keepAwakeChanging || !self.keepAwakeStatus) return;
     BOOL active = self.keepAwakeStatus.boolValue;
+    BOOL enable = self.keepAwakeTarget ? self.keepAwakeTarget.boolValue : !active;
+    BOOL quiet = self.keepAwakeQuiet;
+    self.keepAwakeTarget = nil; self.keepAwakeQuiet = NO;
+    BOOL accepted = [NSUserDefaults.standardUserDefaults boolForKey:@"WattNookKeepAwakeWarningAccepted"];
+    // The fresh read already matches, or an automatic switch lacks consent.
+    if (enable == active || (quiet && enable && !accepted)) { [self refreshPopoverControls]; return; }
     NSString *tool = [self keepAwakeToolPath];
     // A confirmation dialog runs a nested event loop: pause polling before it opens.
     self.keepAwakeChanging = YES;
     [self refreshPopoverControls];
     NSTask *task = [[[NSTask alloc] init] autorelease];
     task.executableURL = [NSURL fileURLWithPath:tool];
-    if (!active && ![NSUserDefaults.standardUserDefaults boolForKey:@"WattNookKeepAwakeWarningAccepted"]) {
+    if (enable && !accepted) {
         NSAlert *confirm = [[[NSAlert alloc] init] autorelease];
         confirm.messageText = @"Keep working with the lid closed?";
         confirm.informativeText = @"This disables sleep for the entire Mac, including after WattNook quits. Turn Keep Awake off before carrying your Mac or putting it in a bag. Keep it ventilated, preferably on power. Keep WattNook running for closed-lid brightness handling. Administrator permission is needed unless the narrow sleep-toggle rule is installed. Do not manage this setting in Vorssaint at the same time.";
@@ -888,7 +950,8 @@ static CGFloat WattStackWidth(NSArray *labels) {
         }
         [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"WattNookKeepAwakeWarningAccepted"];
     }
-    task.arguments = @[active ? @"--disable" : @"--enable"];
+    NSString *direction = enable ? @"--enable" : @"--disable";
+    task.arguments = quiet ? @[direction,@"--no-prompt"] : @[direction];
     NSPipe *errors = [NSPipe pipe];
     task.standardError = errors;
     @try {
@@ -900,6 +963,20 @@ static CGFloat WattStackWidth(NSArray *labels) {
                 self.keepAwakeChanging = NO;
                 self.keepAwakeStatusTime = 0;
                 [self refreshPopoverControls];
+                if (quiet) {
+                    // Automatic switches report inline and back off; never a dialog.
+                    NSString *detail = [[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease];
+                    detail = [detail stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+                    BOOL failed = finished.terminationStatus != 0;
+                    if (failed) {
+                        self.keepAwakeError = detail.length ? detail : @"macOS did not confirm the change.";
+                        self.keepAwakeRetryAfter = NSProcessInfo.processInfo.systemUptime + 300;
+                    }
+                    WattRecordAwakeEvent(failed ? [@"Automatic Keep Awake failed: " stringByAppendingString:self.keepAwakeError] :
+                        enable ? @"Keep Awake on: charger connected" : @"Keep Awake off: on battery");
+                    [self refreshPopoverControls];
+                    return;
+                }
                 if (finished.terminationStatus != 0) {
                     NSString *detail = [[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease];
                     NSAlert *alert = [[[NSAlert alloc] init] autorelease];

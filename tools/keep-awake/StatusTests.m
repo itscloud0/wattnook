@@ -127,7 +127,30 @@ int main(int argc, const char *argv[]) {
             Check(WaitFor(^BOOL { return done; },2),"status subprocess has bounded completion");
             Check(calls == 1,"completion happens once");
         }
+        // "On when plugged in": the charger switches it on quietly; unplugging
+        // waits out the grace period; a manual toggle ends the mode.
+        [NSUserDefaults.standardUserDefaults setObject:@"plugged" forKey:@"WattNookKeepAwakeMode"];
+        controller.fixture = @"slow-off"; controller.keepAwakeStatus = @NO; controller.keepAwakeError = nil;
+        NSUInteger before = controller.toggles;
+        [controller followPowerForKeepAwake:YES];
+        Check(controller.keepAwakeTogglePending && controller.keepAwakeQuiet && controller.keepAwakeTarget.boolValue,
+            "charger requests a quiet switch on");
+        Check(WaitFor(^BOOL { return controller.toggles == before+1; },2),"automatic switch runs after a fresh read");
+        controller.keepAwakeStatus = @YES;
+        [controller followPowerForKeepAwake:NO];
+        Check(!controller.keepAwakeTogglePending && controller.keepAwakeUnpluggedSince > 0,"unplugging waits out the grace period");
+        controller.keepAwakeUnpluggedSince -= 31;
+        [controller followPowerForKeepAwake:NO];
+        Check(controller.keepAwakeTogglePending && !controller.keepAwakeTarget.boolValue,"after the grace period sleep returns");
+        Check(WaitFor(^BOOL { return controller.toggles == before+2; },2),"switch off runs once");
+        controller.keepAwakeStatus = @NO; controller.keepAwakeRetryAfter = NSProcessInfo.processInfo.systemUptime+300;
+        [controller followPowerForKeepAwake:YES];
+        Check(!controller.keepAwakeTogglePending,"a failed automatic switch backs off");
+        [controller toggleKeepAwake];
+        Check(!WattKeepAwakeFollowsPower(),"a manual toggle ends the automatic mode");
+        Check(WaitFor(^BOOL { return controller.toggles == before+3; },2),"manual toggle still runs");
         [controller release];
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookKeepAwakeMode"];
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookAwakeEvents"];
         puts("Status responsiveness, single-flight, error, toggle and timeout checks passed");
     }

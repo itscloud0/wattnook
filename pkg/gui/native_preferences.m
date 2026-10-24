@@ -51,6 +51,15 @@ BOOL WattMenuBatteryIcon(void) {
     id saved = [NSUserDefaults.standardUserDefaults objectForKey:@"WattNookMenuBatteryIcon"];
     return saved == nil ? YES : [saved boolValue];
 }
+// "On when plugged in": WattNook switches Keep Awake with the power source.
+BOOL WattKeepAwakeFollowsPower(void) {
+    return [[NSUserDefaults.standardUserDefaults stringForKey:@"WattNookKeepAwakeMode"] isEqual:@"plugged"];
+}
+// Unplugging keeps sleep off this long, so a charger drop-out never lets a
+// closed Mac fall asleep mid-task.
+BOOL WattKeepAwakeWanted(BOOL pluggedIn, NSTimeInterval unpluggedFor) {
+    return pluggedIn || unpluggedFor < 30;
+}
 // Off by default: on, WattNook reads the Claude Code and Codex logins.
 BOOL WattMenuAIUsage(void) {
     return [NSUserDefaults.standardUserDefaults boolForKey:@"WattNookMenuAIUsage"];

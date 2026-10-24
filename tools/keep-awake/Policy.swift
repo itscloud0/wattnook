@@ -14,6 +14,17 @@ enum KeepAwakePolicy {
         default: return nil
         }
     }
+    /// `--status`, or `--enable`/`--disable` with an optional `--no-prompt`:
+    /// automatic switching may only use the installed sudo rule, never a
+    /// password dialog. Anything else is rejected.
+    static func request(_ args: [String]) -> (enabled: Bool?, prompt: Bool)? {
+        switch args {
+        case ["--status"]: return (nil, false)
+        case ["--enable"], ["--disable"]: return (args[0] == "--enable", true)
+        case ["--enable", "--no-prompt"], ["--disable", "--no-prompt"]: return (args[0] == "--enable", false)
+        default: return nil
+        }
+    }
     static func command(enabled: Bool) -> String {
         "/usr/bin/pmset -a disablesleep \(enabled ? 1 : 0)"
     }

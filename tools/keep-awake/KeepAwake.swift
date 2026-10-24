@@ -21,16 +21,13 @@ import Foundation
 
     static func main() {
         do {
-            let args = Array(CommandLine.arguments.dropFirst())
-            guard args.count == 1 else { throw NSError(domain: "KeepAwake", code: 2) }
-            if args[0] == "--status" {
+            guard let request = KeepAwakePolicy.request(Array(CommandLine.arguments.dropFirst())) else {
+                throw NSError(domain: "KeepAwake", code: 2)
+            }
+            guard let enabled = request.enabled else {
                 print(try status() ? "on" : "off")
                 return
             }
-            guard args[0] == "--enable" || args[0] == "--disable" else {
-                throw NSError(domain: "KeepAwake", code: 2)
-            }
-            let enabled = args[0] == "--enable"
             // Read first; do not change an unknown or already matching setting.
             if try status() == enabled { return }
             let sudo = Process()
@@ -46,6 +43,10 @@ import Foundation
                         "macOS did not confirm the requested sleep setting."])
                 }
                 return
+            }
+            guard request.prompt else {
+                throw NSError(domain: "KeepAwake", code: 5, userInfo: [NSLocalizedDescriptionKey:
+                    "Switching Keep Awake automatically needs WattNook's sleep-toggle rule. No password prompt was shown."])
             }
             // No rule (or revoked rule): use normal authorization, never sudo password input.
             let command = KeepAwakePolicy.command(enabled: enabled)

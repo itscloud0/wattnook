@@ -140,6 +140,8 @@ int main(int argc, const char *argv[]) {
         assert(isnan(missing.cpu) && isnan(missing.memory) && isnan(missing.watts) && isnan(missing.disk));
         [history append:(WattMetricSample){5,30,50,12,2}]; // backwards clock clears stale timeline
         assert(history.count == 1 && [history sampleAtIndex:0].time == 5);
+        // Keep Awake follows the charger, with a grace period after unplugging.
+        assert(WattKeepAwakeWanted(YES,0) && WattKeepAwakeWanted(NO,29) && !WattKeepAwakeWanted(NO,30));
         assert([WattMemoryDetail(3.7e9,2.5*1024*1024*1024,16ULL<<30) isEqual:@"2.5 GB swapped"]);
         assert([WattMemoryDetail(1.6*1024*1024*1024,10*1024*1024,16ULL<<30) isEqual:@"10.0% RAM"]);
         assert([WattCPUUsageLabel(234,10) isEqual:@"23.4% CPU"]);
@@ -364,7 +366,7 @@ int main(int argc, const char *argv[]) {
         NSButton *awakeInfo = FindButton(view,@"Keep Awake details…");
         if (!awakeInfo) { fprintf(stderr,"FAIL: Settings has a Keep Awake details button\n"); return 1; }
         assert(awakeInfo.target == c && awakeInfo.action == @selector(showKeepAwakeDiagnostics:));
-        assert(c.darkButton.action == @selector(toggleKeepAwakeFromPopover:));
+        assert(c.darkButton.action == @selector(showKeepAwakeOptions:));
         assert(!FindAccessibleButton(view,@"Keep Awake details"));
         NSWindow *window = [[NSWindow alloc] initWithContentRect:view.bounds
             styleMask:NSWindowStyleMaskBorderless backing:NSBackingStoreBuffered defer:NO];
@@ -705,7 +707,7 @@ int main(int argc, const char *argv[]) {
                         assert(NSContainsRect(container.frame,FindButton(view,@"Battery").frame));
             }
             Capture(view,directory,@"polish-glass-battery");
-            assert(c.darkButton.action == @selector(toggleKeepAwakeFromPopover:));
+            assert(c.darkButton.action == @selector(showKeepAwakeOptions:));
             assert(!c.darkButton.hidden);
             assert(!FindButton(view,@"Screen off"));
             [gear performClick:nil];

@@ -502,9 +502,10 @@ static void Redisplay(NSView *view) {
     c.heatButton = Button(_batteryPage, NSMakeRect(16, 46, 180, 56),
         @"Heat protection", @"", c, @selector(showHeatOptions:));
     c.darkButton = Button(_batteryPage, NSMakeRect(204, 46, 180, 56),
-        @"Keep Awake", @"", c, @selector(toggleKeepAwakeFromPopover:));
+        @"Keep Awake", @"", c, @selector(showKeepAwakeOptions:));
     c.heatButton.font = c.darkButton.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
     ((WattButton *)c.heatButton).opensMenu = YES;
+    ((WattButton *)c.darkButton).opensMenu = YES;
     // Battery ends at its controls; System and Storage are one tab away and
     // are no longer echoed here. Summary values stay detached for the menu.
     // The three readings share one group, the consumers another.
@@ -779,7 +780,8 @@ static void Redisplay(NSView *view) {
     c.heatButton.title = [c item:BattItemHeatProtection].hidden ? @"Heat unavailable" : @"Heat protection";
     ((WattButton *)c.heatButton).subtitle = [c item:BattItemHeatProtection].hidden ? @"Native limit only" : c.heatDetail ?: @"Checking…";
     c.heatButton.accessibilityLabel = [NSString stringWithFormat:@"%@. %@",c.heatButton.title,((WattButton *)c.heatButton).subtitle];
-    ((WattButton *)c.darkButton).subtitle = c.keepAwakeStatus == nil ? @"Status unavailable" : @"Prevent system sleep";
+    ((WattButton *)c.darkButton).subtitle = c.keepAwakeStatus == nil ? @"Status unavailable" :
+        WattKeepAwakeFollowsPower() ? @"When plugged in" : @"Prevent system sleep";
     c.heatButton.toolTip = [c item:BattItemHeatProtection].title;
     BOOL awake = [c isKeepAwakeActive];
     BOOL awaitingStatus = c.keepAwakeTogglePending || (!c.keepAwakeStatus && c.keepAwakeStatusReading);
@@ -787,7 +789,9 @@ static void Redisplay(NSView *view) {
         awaitingStatus ? @"Checking…" :
         c.lidGuardError ? @"Keep Awake has an issue" : awake ? @"Keep Awake is on" : @"Keep Awake";
     c.darkButton.enabled = !c.keepAwakeChanging && !awaitingStatus;
-    c.darkButton.toolTip = awaitingStatus ? @"Reading macOS sleep setting…" : c.keepAwakeError ?: c.lidGuardError ?: @"Prevents system sleep. Remote access still requires a working connection. Details are in Settings.";
+    c.darkButton.toolTip = awaitingStatus ? @"Reading macOS sleep setting…" : c.keepAwakeError ?: c.lidGuardError ?:
+        (WattKeepAwakeFollowsPower() ? @"Sleep is off while a charger is connected and returns 30 seconds after you unplug. Details are in Settings." :
+        @"Prevents system sleep. Remote access still requires a working connection. Details are in Settings.");
     [c item:BattItemKeepAwake].enabled = c.darkButton.enabled;
     [c item:BattItemKeepAwake].title = c.keepAwakeStatus == nil ? @"Keep Awake: status unavailable" : awake ? @"Keep Awake: On — turn off" : @"Keep Awake: closed-lid work";
     c.darkButton.accessibilityLabel = c.darkButton.title;
