@@ -138,3 +138,87 @@ func TestChargerThatKeepsDisconnectingWarnsUntilStable(t *testing.T) {
 		t.Fatal("still warning after a quiet window")
 	}
 }
+
+// dropOutFixture holds a hot battery and drives the clock and detach counter.
+func dropOutFixture(t *testing.T) (*nativeHeatHold, *holderFixture, func(detaches int), func(time.Duration)) {
+	t.Helper()
+	h, holder, _ := newHoldFixture(heatHoldSample{Temperature: 40, Percent: 50, PluggedIn: true})
+	clock, count := time.Date(2026, 10, 24, 20, 0, 0, 0, time.UTC), 700
+	h.now = func() time.Time { return clock }
+	h.lastTransition = clock.Add(-time.Hour)
+	h.detachCount = func() (int, error) { return count, nil }
+	h.reconcile(true, 33, 30)
+	if !holder.active {
+		t.Fatal("not held")
+	}
+	// tick passes 10 s with the given number of drop-outs, then reconciles.
+	tick := func(detaches int) {
+		clock, count = clock.Add(10*time.Second), count+detaches
+		h.reconcile(true, 33, 30)
+	}
+	wait := func(d time.Duration) {
+		for end := clock.Add(d); clock.Before(end); {
+			tick(0)
+		}
+	}
+	return h, holder, tick, wait
+}
+
+func TestDropOutsThatGoOnWithoutTheHoldClearWattNook(t *testing.T) {
+	h, holder, tick, _ := dropOutFixture(t)
+	tick(2)
+	tick(2) // four in 20 s: the test starts
+	status := getHeatProtectionStatusUnchecked()
+	if holder.active || holder.releases != 1 || !strings.Contains(status.AdapterWarning, "handed charging back") {
+		t.Fatalf("no self-test: releases=%d %+v", holder.releases, status)
+	}
+	// Still hot and still dropping out: no hold for the 3 minutes.
+	for range 17 {
+		tick(1)
+	}
+	if len(holder.holds) != 1 || h.diagnosis != "" {
+		t.Fatalf("holds=%v diagnosis=%q", holder.holds, h.diagnosis)
+	}
+	tick(1)
+	if !holder.active || !strings.Contains(getHeatProtectionStatusUnchecked().AdapterWarning, "not WattNook") {
+		t.Fatalf("hold not resumed after a charger verdict: %+v", getHeatProtectionStatusUnchecked())
+	}
+	// The verdict stands: no second test while the charger keeps dropping out.
+	for range 30 {
+		tick(1)
+	}
+	if holder.releases != 1 {
+		t.Fatalf("retested within the verdict window: releases=%d", holder.releases)
+	}
+}
+
+func TestDropOutsThatStopWithoutTheHoldKeepChargeControlOff(t *testing.T) {
+	h, holder, tick, wait := dropOutFixture(t)
+	tick(2)
+	tick(2)
+	tick(2) // the release pulse
+	wait(stepAsideFor)
+	if h.diagnosis != diagnosisHold || holder.active || len(holder.holds) != 1 {
+		t.Fatalf("diagnosis=%q holds=%v", h.diagnosis, holder.holds)
+	}
+	status := getHeatProtectionStatusUnchecked()
+	if !strings.Contains(status.AdapterWarning, "stopped disconnecting") || status.Paused {
+		t.Fatalf("%+v", status)
+	}
+	wait(verdictFor - time.Minute)
+	if holder.active {
+		t.Fatal("charge control back within 30 minutes")
+	}
+	wait(2 * time.Minute)
+	if !holder.active || len(holder.holds) != 2 || getHeatProtectionStatusUnchecked().AdapterWarning != "" {
+		t.Fatalf("not resumed after the verdict window: holds=%v %+v", holder.holds, getHeatProtectionStatusUnchecked())
+	}
+}
+
+func TestDropOutTestWithoutAHoldDoesNothing(t *testing.T) {
+	h, holder, _ := newHoldFixture(heatHoldSample{Temperature: 25, Percent: 50, PluggedIn: true})
+	h.adapterUnstable = true
+	if h.diagnoseDropOuts() || holder.releases != 0 || h.dropOutWarning() != adapterUnstableWarning {
+		t.Fatal("tested without a hold")
+	}
+}

@@ -75,6 +75,9 @@ const (
 	adapterDegradedWarning = "The power adapter dropped to 5 V (about 12 W) after a charge-hold pulse. Unplug and reconnect the power cable."
 	adapterIgnoredWarning  = "macOS stopped drawing power from the connected charger, so the Mac runs on battery. Unplug and reconnect the power cable."
 	adapterUnstableWarning = "The charger keeps disconnecting and reconnecting, so the battery drains between short bursts of charging. Try another cable or port, or a stronger charger."
+	adapterTestingWarning  = "The charger keeps disconnecting and reconnecting. WattNook has handed charging back to macOS for 3 minutes to check whether its charge control is the cause."
+	adapterNotUsWarning    = "The charger kept disconnecting with WattNook's charge control off, so the cause is the charger, cable or port, not WattNook. Try another cable, port or charger."
+	adapterUsWarning       = "The charger stopped disconnecting once WattNook released its charge control, so WattNook keeps it off for 30 minutes and macOS charges normally."
 	// adapterIgnoredAfter is how long the ignored state must last to warn.
 	adapterIgnoredAfter = 30 * time.Second
 	// The charger is unstable after adapterUnstableDetaches USB-C detaches
@@ -83,7 +86,24 @@ const (
 	adapterUnstableDetaches = 4
 	adapterUnstableWindow   = 2 * time.Minute
 	adapterDetachCheckEvery = 10 * time.Second
+	// The self-test releases the hold for stepAsideFor; a verdict stands for
+	// verdictFor before the next test.
+	stepAsideFor = 3 * time.Minute
+	verdictFor   = 30 * time.Minute
+	// A release pulse costs a detach or two; more means the drop-outs went on.
+	stepAsideContinued = adapterUnstableDetaches
+
+	diagnosisCharger = "charger"
+	diagnosisHold    = "hold"
+	diagnosisUnknown = "unknown"
 )
+
+func (h *nativeHeatHold) clock() time.Time {
+	if h.now != nil {
+		return h.now()
+	}
+	return time.Now()
+}
 
 type detachSample struct {
 	at    time.Time
@@ -152,17 +172,23 @@ func (h *nativeHeatHold) refreshAdapterWarning(pluggedIn bool) {
 // maintain loop is too slow to see each drop-out, so it compares the port
 // controllers' detach counter over a window instead.
 func (h *nativeHeatHold) watchDetaches() {
-	if h.detachCount == nil || time.Since(h.detachCheckedAt) < adapterDetachCheckEvery {
+	now := h.clock()
+	if h.detachCount == nil || now.Sub(h.detachCheckedAt) < adapterDetachCheckEvery {
 		return
 	}
-	h.detachCheckedAt = time.Now()
+	h.detachCheckedAt = now
 	count, err := h.detachCount()
 	if err != nil || count < 0 {
 		return
 	}
-	now := time.Now()
 	if n := len(h.detaches); n > 0 && count < h.detaches[n-1].count {
 		h.detaches = nil // counter reset
+	} else if n > 0 && count > h.detaches[n-1].count {
+		// One line per check with what WattNook was doing, so drop-outs can
+		// be matched against its own transitions afterwards.
+		logrus.WithFields(logrus.Fields{"detaches": count - h.detaches[n-1].count, "held": h.holder.Active(),
+			"target": h.target, "heat": h.forHeat, "sinceTransition": now.Sub(h.lastTransition).Round(time.Second)}).
+			Info("charger dropped out")
 	}
 	h.detaches = append(h.detaches, detachSample{at: now, count: count})
 	// Keep the newest sample at least a window old as the baseline.
@@ -180,4 +206,75 @@ func (h *nativeHeatHold) watchDetaches() {
 	case recent == 0 && now.Sub(baseline.at) >= adapterUnstableWindow:
 		h.adapterUnstable = false
 	}
+}
+
+// diagnoseDropOuts is the self-test for a charger that keeps dropping out
+// while WattNook holds charging: release the hold for stepAsideFor and see
+// whether the drop-outs stop. If they go on, the charger side is at fault and
+// the hold resumes; if they stop, WattNook keeps charge control off for
+// verdictFor. It returns true while no hold may be set.
+func (h *nativeHeatHold) diagnoseDropOuts() bool {
+	now := h.clock()
+	if !h.stepAsideUntil.IsZero() {
+		if now.Before(h.stepAsideUntil) {
+			return true
+		}
+		h.stepAsideUntil, h.diagnosedAt = time.Time{}, now
+		continued := h.freshDetachCount() - h.stepAsideDetaches
+		switch {
+		case continued < 0:
+			h.diagnosis = diagnosisUnknown // the counter reset (replug); no verdict
+		case continued >= stepAsideContinued:
+			h.diagnosis = diagnosisCharger
+			logrus.WithField("detaches", continued).Warn("charger kept dropping out with the hold released; not caused by WattNook")
+		default:
+			h.diagnosis = diagnosisHold
+			logrus.WithField("detaches", continued).Warn("drop-outs stopped with the hold released; charge control stays off")
+		}
+	}
+	if h.diagnosis != "" && now.Sub(h.diagnosedAt) >= verdictFor {
+		h.diagnosis = ""
+	}
+	if h.diagnosis == diagnosisHold {
+		return true
+	}
+	if h.diagnosis != "" || !h.adapterUnstable || !h.holder.Active() {
+		return false
+	}
+	if err := h.release(); err != nil {
+		logrus.WithError(err).Error("release hold for drop-out test")
+		return false
+	}
+	// Read the counter now: the last periodic sample can be 10 s old, and a
+	// storm in those seconds must not count against the test.
+	h.stepAsideUntil, h.stepAsideDetaches = now.Add(stepAsideFor), h.freshDetachCount()
+	logrus.Warn("charger keeps dropping out while WattNook holds charging; released the hold for 3 minutes to test")
+	return true
+}
+
+func (h *nativeHeatHold) freshDetachCount() int {
+	if h.detachCount != nil {
+		if count, err := h.detachCount(); err == nil && count >= 0 {
+			return count
+		}
+	}
+	if n := len(h.detaches); n > 0 {
+		return h.detaches[n-1].count
+	}
+	return h.stepAsideDetaches
+}
+
+// dropOutWarning explains drop-outs, including the self-test and its verdict.
+func (h *nativeHeatHold) dropOutWarning() string {
+	switch {
+	case !h.stepAsideUntil.IsZero():
+		return adapterTestingWarning
+	case h.diagnosis == diagnosisHold:
+		return adapterUsWarning
+	case h.diagnosis == diagnosisCharger && h.adapterUnstable:
+		return adapterNotUsWarning
+	case h.adapterUnstable:
+		return adapterUnstableWarning
+	}
+	return ""
 }

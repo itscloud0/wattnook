@@ -81,3 +81,12 @@ Later the same day a heat hold landed during a drop-out: CHIE read `0x10` (macOS
 ## Reserve lowered to 15 % / 20 % — 2026-10-24
 
 After a day of charger drop-outs the battery drained to 3 %; the reserve then let a 38 °C battery charge until 30 %. The user wants heat to give way only when the battery is really low: a draining heat hold now ends below 15 % (was 25 %) and re-arms at 20 % (was 30 %). The 10 % floor for starting a hold is unchanged.
+
+## Drop-out self-test — 2026-10-24
+
+The user saw a drop-out storm (19:55:30–19:57, about one per second) on a new Apple cable in the other port, with the battery held for heat at 24 % and light load; WattNook's last pulse was at 19:53:29 and CHIE stayed `00`. Stopping the helper afterwards proved nothing because the storm had already ended. Catching it live is unreliable, so the daemon now tests itself:
+
+- Every 10 s check that sees the detach counter rise logs `charger dropped out` with the hold state, target and time since WattNook's last transition.
+- When the charger becomes unstable (4 detaches in 2 min) while a hold is active, the hold is released for 3 min (`stepAsideFor`), with a fresh counter baseline. No hold is set during the test.
+- 4 or more detaches during the test (a release pulse costs one or two): the charger side is at fault; the hold resumes and the warning says so. Fewer: drop-outs stopped without the hold, so charge control stays off for 30 min (`verdictFor`) and macOS charges by its own limit. A verdict blocks a new test for 30 min; a counter reset (replug) gives no verdict.
+- A coincidental end of a storm during the test reads as "WattNook's fault"; the cost is 30 min of Apple-only charging, which is the safe side.

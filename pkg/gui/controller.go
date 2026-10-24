@@ -383,6 +383,12 @@ func heatProtectionPresentation(enabled bool, status *client.HeatProtectionStatu
 		switch {
 		case strings.Contains(status.AdapterWarning, "5 V"):
 			detail = "Charger at 5 V, reconnect it"
+		case strings.Contains(status.AdapterWarning, "handed charging back"):
+			detail = "Checking drop-outs"
+		case strings.Contains(status.AdapterWarning, "not WattNook"):
+			detail = "Charger fault (tested)"
+		case strings.Contains(status.AdapterWarning, "stopped disconnecting"):
+			detail = "Off 30 min (drop-outs)"
 		case strings.Contains(status.AdapterWarning, "keeps disconnecting"):
 			detail = "Charger keeps dropping out"
 		}

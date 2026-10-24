@@ -40,6 +40,9 @@ func TestChargeHoldHeatPresentationNamesState(t *testing.T) {
 		{"paused", true, client.HeatProtectionStatus{Mechanism: "charge-hold", Paused: true, PauseTemperatureCelsius: 33, ResumeTemperatureCelsius: 30}, "Paused until 30 °C"},
 		{"low battery", true, client.HeatProtectionStatus{Mechanism: "charge-hold", ReserveBlocked: true}, "Low battery, pause off"},
 		{"unstable charger", true, client.HeatProtectionStatus{Mechanism: "charge-hold", AdapterWarning: "The charger keeps disconnecting and reconnecting"}, "Charger keeps dropping out"},
+		{"drop-out test", true, client.HeatProtectionStatus{Mechanism: "charge-hold", AdapterWarning: "The charger keeps disconnecting and reconnecting. WattNook has handed charging back to macOS"}, "Checking drop-outs"},
+		{"charger verdict", true, client.HeatProtectionStatus{Mechanism: "charge-hold", AdapterWarning: "The charger kept disconnecting with WattNook's charge control off, so the cause is the charger, cable or port, not WattNook."}, "Charger fault (tested)"},
+		{"hold verdict", true, client.HeatProtectionStatus{Mechanism: "charge-hold", AdapterWarning: "The charger stopped disconnecting once WattNook released its charge control"}, "Off 30 min (drop-outs)"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, detail := heatProtectionPresentation(tc.enabled, &tc.status); detail != tc.detail {

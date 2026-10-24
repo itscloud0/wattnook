@@ -63,6 +63,12 @@ type nativeHeatHold struct {
 	detaches        []detachSample
 	detachCheckedAt time.Time
 	adapterUnstable bool
+	// Drop-out self-test: release the hold and see whether the drop-outs stop.
+	stepAsideUntil    time.Time
+	stepAsideDetaches int
+	diagnosis         string // "", diagnosisCharger or diagnosisHold
+	diagnosedAt       time.Time
+	now               func() time.Time
 	// Why the active hold exists and where it is.
 	forHeat   bool
 	forSail   bool
@@ -214,8 +220,8 @@ func (h *nativeHeatHold) publish(status HeatProtectionStatus) {
 		status.LastError = h.fault
 	}
 	status.AdapterWarning = h.adapterWarning
-	if status.AdapterWarning == "" && h.adapterUnstable {
-		status.AdapterWarning = adapterUnstableWarning
+	if status.AdapterWarning == "" {
+		status.AdapterWarning = h.dropOutWarning()
 	}
 	heatProtectionMu.Lock()
 	heatProtectionStatus = status
@@ -260,6 +266,7 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 		h.forHeat, h.forSail, h.forDrain, h.forLimit, h.sailArmed = false, false, false, 0, false
 		h.refreshAdapterWarning(true)
 		h.detaches, h.adapterUnstable = nil, false
+		h.stepAsideUntil, h.diagnosis = time.Time{}, ""
 		if err := h.release(); err != nil {
 			logrus.WithError(err).Error("charge hold release")
 		}
@@ -275,6 +282,11 @@ func (h *nativeHeatHold) reconcile(enabled bool, pause, resume float64) {
 	temperature := sample.Temperature
 	if enabled {
 		status.TemperatureCelsius = &temperature
+	}
+	if h.diagnoseDropOuts() {
+		h.forHeat, h.forSail, h.forDrain, h.forLimit, h.sailArmed = false, false, false, 0, false
+		status.Requested, status.Reason = "released", "charger dropping out; charge control off"
+		return
 	}
 	unplugged := !sample.PluggedIn && time.Since(h.lastTransition) >= h.pulseSettle
 	if draining && (topUp || unplugged) {
