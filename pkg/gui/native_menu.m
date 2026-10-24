@@ -541,13 +541,16 @@ static NSDictionary *WattStackAttributes(NSUInteger rows) {
              NSForegroundColorAttributeName:NSColor.whiteColor};
 }
 
-static CGFloat WattStackWidth(NSArray *labels) {
+static CGFloat WattStackWidth(NSArray *labels, CGFloat lead) {
     if (!labels.count) return 0;
     NSDictionary *attributes = WattStackAttributes(labels.count);
     CGFloat labelWidth = 0;
     for (NSString *label in labels) labelWidth = MAX(labelWidth,[label sizeWithAttributes:attributes].width);
-    return ceil(labelWidth+5+[@"100%" sizeWithAttributes:attributes].width)+3;
+    return ceil(lead+labelWidth+5+[@"100%" sizeWithAttributes:attributes].width)+3;
 }
+
+// The usage pages' mark plus its gap before the labels.
+static const CGFloat WattUsageLead = 16;
 
 // Page 0 is the system metrics; 1 Claude and 2 ChatGPT, while they have data.
 - (NSArray *)menuPages {
@@ -634,25 +637,27 @@ static CGFloat WattStackWidth(NSArray *labels) {
         usageNote = _menuPage == 1 ? self.claudeUsageNote : self.codexUsageNote;
     }
     NSDictionary *attributes = WattStackAttributes(labels.count);
-    CGFloat labelWidth = 0, valueWidth = 0, lead = glyph ? glyph.size.width+4 : 0;
+    CGFloat labelWidth = 0, valueWidth = 0, lead = glyph ? WattUsageLead : 0;
     for (NSString *label in labels) labelWidth = MAX(labelWidth,[label sizeWithAttributes:attributes].width);
     // Reserve the widest value so the status item (and the popover anchored
     // to it) does not shift as readings change.
     valueWidth = labels.count ? [@"100%" sizeWithAttributes:attributes].width : 0;
     for (NSString *value in values) valueWidth = MAX(valueWidth,[value sizeWithAttributes:attributes].width);
     CGFloat stackWidth = labels.count ? ceil(lead+labelWidth+5+valueWidth)+3 : 0;
-    // The metrics page keeps its own width; a usage page is never narrower
-    // than it, so only the short usage glance widens the item.
-    if (_menuPage) stackWidth = MAX(stackWidth,WattStackWidth(systemLabels));
+    // While usage pages are on, every page takes the widest page's width from
+    // the start (not when data arrives), and values share one right edge: the
+    // item never changes size, so the menu bar beside it never moves.
+    if (WattMenuAIUsage())
+        stackWidth = MAX(stackWidth,MAX(WattStackWidth(systemLabels,0),WattStackWidth(@[@"5h",@"wk"],WattUsageLead)));
     NSString *charge = self.powerFlowView.chargePercent < 0 ? @"—%" :
         [NSString stringWithFormat:@"%ld%%",(long)self.powerFlowView.chargePercent];
     NSDictionary *chargeStyle = @{NSFontAttributeName:
         [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium],
         NSForegroundColorAttributeName:NSColor.whiteColor};
-    CGFloat percentGap = percent && labels.count ? 10 : 0;
+    CGFloat percentGap = percent && stackWidth > 0 ? 10 : 0;
     CGFloat percentWidth = percent ? percentGap+ceil(MAX([charge sizeWithAttributes:chargeStyle].width,
         [@"100%" sizeWithAttributes:chargeStyle].width))+4 : 0;
-    CGFloat iconGap = icon && (labels.count || percent) ? 8 : 0;
+    CGFloat iconGap = icon && (stackWidth > 0 || percent) ? 8 : 0;
     CGFloat iconWidth = self.batteryIcon ? self.batteryIcon.size.width : 25;
     NSImage *combined = [[[NSImage alloc] initWithSize:
         NSMakeSize(MAX(24,stackWidth+percentWidth+iconGap+(icon ? iconWidth+1 : 0)),24)] autorelease];
@@ -662,7 +667,8 @@ static CGFloat WattStackWidth(NSArray *labels) {
     for (NSInteger i=0;i<labels.count;i++) {
         CGFloat y = (24-height)/2 + ((labels.count-1)/2.0-i)*8;
         [labels[i] drawAtPoint:NSMakePoint(lead+1,y) withAttributes:attributes];
-        [values[i] drawAtPoint:NSMakePoint(lead+labelWidth+6,y) withAttributes:attributes];
+        [values[i] drawAtPoint:NSMakePoint(stackWidth-3-[values[i] sizeWithAttributes:attributes].width,y)
+                withAttributes:attributes];
     }
     if (percent) [charge drawAtPoint:NSMakePoint(stackWidth+percentGap,
         (24-[charge sizeWithAttributes:chargeStyle].height)/2) withAttributes:chargeStyle];
