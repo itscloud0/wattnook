@@ -564,7 +564,7 @@ int main(int argc, const char *argv[]) {
         assert(usageRequests == 1 && c.menuPageTimer.isValid);
         [c applyAIUsagePreference]; assert(usageRequests == 1); // fresh: no second request
         CGFloat rotating = c.statusItem.button.image.size.width;
-        assert(rotating >= systemOnly); // reserved before any data arrives
+        assert(rotating == systemOnly); // usage pages fit the metrics width
         double usage[4] = {34, 12, -1, 40};
         [c setAIUsage:usage claudeNote:@"Claude: 5-hour 34%, week 12%" codexNote:@"ChatGPT: week 40%"];
         assert(c.statusItem.button.image.size.width == rotating); // data arriving changes nothing
@@ -579,6 +579,15 @@ int main(int argc, const char *argv[]) {
         }
         assert([pageLabels[0] containsString:@"Claude: 5-hour 34%"] && [pageLabels[1] containsString:@"ChatGPT: week 40%"]);
         assert([pageLabels[2] containsString:@"SSD space used"] && ![pageLabels[2] containsString:@"Claude"]);
+        // The user's order and choice of services decide the rotation.
+        [NSUserDefaults.standardUserDefaults setObject:@[@"codex",@"bogus",@"claude",@"codex"] forKey:@"WattNookAIUsageOrder"];
+        assert([WattAIUsageOrder() isEqual:(@[@"codex",@"claude"])]);
+        assert([[c menuPages] isEqual:(@[@0,@2,@1])]);
+        [NSUserDefaults.standardUserDefaults setObject:@[@"codex"] forKey:@"WattNookAIUsageHidden"];
+        assert([WattAIUsageShown() isEqual:@[@"claude"]] && [[c menuPages] isEqual:(@[@0,@1])]);
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookAIUsageOrder"];
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookAIUsageHidden"];
+        assert([[c menuPages] isEqual:(@[@0,@1,@2])]);
         [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"WattNookMenuAIUsage"];
         [c applyAIUsagePreference];
         assert(c.menuPageTimer == nil && c.statusItem.button.image.size.width == systemOnly);
@@ -737,6 +746,11 @@ int main(int argc, const char *argv[]) {
         [FindButton(view,@"Battery icon") performClick:nil];
         assert([WattMenuMetrics() isEqual:@[@"Battery"]] && !WattMenuBatteryIcon());
         assert(FindButton(view,@"AI usage limits") && !WattMenuAIUsage());
+        NSButton *aiOptions = nil;
+        for (NSView *sub in FindButton(view,@"AI usage limits").superview.subviews)
+            if ([sub.identifier isEqual:@"aiUsageOptions"]) aiOptions = (NSButton *)sub;
+        assert(aiOptions && aiOptions.target == c && aiOptions.action == @selector(showAIUsageOptions:));
+        assert(!NSIntersectsRect(aiOptions.frame,FindButton(view,@"AI usage limits").frame));
         [FindButton(view,@"AI usage limits") performClick:nil]; assert(WattMenuAIUsage() && c.menuPageTimer.isValid);
         [FindButton(view,@"AI usage limits") performClick:nil]; assert(!WattMenuAIUsage() && c.menuPageTimer == nil);
         [FindButton(view,@"Battery") performClick:nil];

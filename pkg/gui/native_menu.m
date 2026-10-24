@@ -516,7 +516,7 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
 }
 
 // The system metrics stay longest; each usage page is a short glance.
-static const NSTimeInterval WattMenuSystemDwell = 20, WattMenuUsageDwell = 8;
+static const NSTimeInterval WattMenuSystemDwell = 10, WattMenuUsageDwell = 5;
 static const NSTimeInterval WattUsageRefreshInterval = 300;
 
 // The Claude and OpenAI marks, from Simple Icons (CC0; the marks belong to
@@ -531,15 +531,17 @@ static NSImage *WattAIGlyph(BOOL claude) {
         NSString *svg = [NSString stringWithFormat:@"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">"
             "<path d=\"%@\"/></svg>", claude ? WattClaudeMarkPath : WattOpenAIMarkPath];
         marks[i] = [[NSImage alloc] initWithData:[svg dataUsingEncoding:NSUTF8StringEncoding]];
-        marks[i].size = NSMakeSize(12,12);
+        marks[i].size = NSMakeSize(11,11);
     }
     return marks[i];
 }
 
-static NSDictionary *WattStackAttributes(NSUInteger rows) {
-    return @{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:rows > 1 ? 8.5 : 11 weight:NSFontWeightMedium],
+static NSDictionary *WattStackFont(CGFloat size) {
+    return @{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:size weight:NSFontWeightMedium],
              NSForegroundColorAttributeName:NSColor.whiteColor};
 }
+
+static NSDictionary *WattStackAttributes(NSUInteger rows) { return WattStackFont(rows > 1 ? 8.5 : 11); }
 
 static CGFloat WattStackWidth(NSArray *labels, CGFloat lead) {
     if (!labels.count) return 0;
@@ -549,16 +551,72 @@ static CGFloat WattStackWidth(NSArray *labels, CGFloat lead) {
     return ceil(lead+labelWidth+5+[@"100%" sizeWithAttributes:attributes].width)+3;
 }
 
-// The usage pages' mark plus its gap before the labels.
-static const CGFloat WattUsageLead = 16;
+// The usage pages' 11 pt mark plus its gap before the labels.
+static const CGFloat WattUsageLead = 14;
 
-// Page 0 is the system metrics; 1 Claude and 2 ChatGPT, while they have data.
+// Page 0 is the system metrics, then each shown provider (page n+1 for
+// WattAIProviderIDs()[n]) in the user's order, while it has data.
 - (NSArray *)menuPages {
     NSMutableArray *pages = [NSMutableArray arrayWithObject:@0];
     if (!WattMenuAIUsage()) return pages;
-    if (_aiUsage[0] >= 0 || _aiUsage[1] >= 0) [pages addObject:@1];
-    if (_aiUsage[2] >= 0 || _aiUsage[3] >= 0) [pages addObject:@2];
+    for (NSString *provider in WattAIUsageShown()) {
+        NSUInteger index = [WattAIProviderIDs() indexOfObject:provider];
+        if (_aiUsage[index*2] >= 0 || _aiUsage[index*2+1] >= 0) [pages addObject:@(index+1)];
+    }
     return pages;
+}
+
+static void WattPermutations(NSArray *items, NSArray *prefix, NSMutableArray *into) {
+    if (!items.count) { [into addObject:prefix]; return; }
+    for (id item in items) {
+        NSMutableArray *rest = [[items mutableCopy] autorelease];
+        [rest removeObject:item];
+        WattPermutations(rest, [prefix arrayByAddingObject:item], into);
+    }
+}
+
+// Which AI services rotate through the menu bar, and in what order.
+- (void)showAIUsageOptions:(NSButton *)sender {
+    NSMenu *menu = [[[NSMenu alloc] initWithTitle:@"AI usage"] autorelease];
+    NSArray *order = WattAIUsageOrder(), *shown = WattAIUsageShown();
+    for (NSString *provider in order) {
+        NSMenuItem *item = [menu addItemWithTitle:WattAIProviderName(provider)
+            action:@selector(toggleAIProvider:) keyEquivalent:@""];
+        item.target = self; item.representedObject = provider;
+        item.state = [shown containsObject:provider] ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+    [menu addItem:NSMenuItem.separatorItem];
+    NSMenuItem *orderItem = [menu addItemWithTitle:@"Order" action:nil keyEquivalent:@""];
+    NSMenu *orders = [[[NSMenu alloc] initWithTitle:@"Order"] autorelease];
+    NSMutableArray *permutations = [NSMutableArray array];
+    WattPermutations(order, @[], permutations);
+    [permutations sortUsingComparator:^NSComparisonResult(NSArray *a, NSArray *b) {
+        return [@([a isEqual:order] ? 0 : 1) compare:@([b isEqual:order] ? 0 : 1)];
+    }];
+    for (NSArray *permutation in permutations) {
+        NSMutableArray *names = [NSMutableArray array];
+        for (NSString *provider in permutation) [names addObject:WattAIProviderName(provider)];
+        NSMenuItem *item = [orders addItemWithTitle:[names componentsJoinedByString:@" → "]
+            action:@selector(setAIUsageOrder:) keyEquivalent:@""];
+        item.target = self; item.representedObject = permutation;
+        item.state = [permutation isEqual:order] ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+    orderItem.submenu = orders;
+    [self showMenu:menu fromButton:sender];
+}
+
+- (void)toggleAIProvider:(NSMenuItem *)sender {
+    NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+    NSMutableArray *hidden = [[[defaults arrayForKey:@"WattNookAIUsageHidden"] mutableCopy] autorelease] ?: [NSMutableArray array];
+    if ([hidden containsObject:sender.representedObject]) [hidden removeObject:sender.representedObject];
+    else [hidden addObject:sender.representedObject];
+    [defaults setObject:hidden forKey:@"WattNookAIUsageHidden"];
+    [self refreshStatusImage];
+}
+
+- (void)setAIUsageOrder:(NSMenuItem *)sender {
+    [NSUserDefaults.standardUserDefaults setObject:sender.representedObject forKey:@"WattNookAIUsageOrder"];
+    [self refreshStatusImage];
 }
 
 - (void)scheduleMenuPage {
@@ -628,7 +686,7 @@ static const CGFloat WattUsageLead = 16;
     NSImage *glyph = nil;
     NSString *usageNote = nil;
     if (_menuPage) {
-        NSInteger base = _menuPage == 1 ? 0 : 2;
+        NSInteger base = (_menuPage-1)*2;
         labels = [NSMutableArray arrayWithObjects:@"5h",@"wk",nil];
         values = [NSMutableArray array];
         for (NSInteger i=0;i<2;i++) [values addObject:_aiUsage[base+i] < 0 ? @"—" :
@@ -636,7 +694,23 @@ static const CGFloat WattUsageLead = 16;
         glyph = WattAIGlyph(_menuPage == 1);
         usageNote = _menuPage == 1 ? self.claudeUsageNote : self.codexUsageNote;
     }
+    // The metrics page keeps its natural width; while usage pages are on,
+    // every page takes that same width, so the item never resizes and the
+    // menu bar beside it never moves. A usage page fits itself into it,
+    // stepping its font down only if it must (e.g. "100%").
+    CGFloat systemWidth = WattStackWidth(systemLabels,0);
+    CGFloat usageWidth = systemWidth > 0 ? systemWidth : WattStackWidth(@[@"5h",@"wk"],WattUsageLead);
     NSDictionary *attributes = WattStackAttributes(labels.count);
+    if (_menuPage) for (CGFloat size = 8.5; size >= 6.5; size -= 0.25) {
+        attributes = WattStackFont(size);
+        CGFloat need = WattUsageLead+3+3;
+        CGFloat widest = 0;
+        for (NSString *label in labels) widest = MAX(widest,[label sizeWithAttributes:attributes].width);
+        need += widest;
+        widest = 0;
+        for (NSString *value in values) widest = MAX(widest,[value sizeWithAttributes:attributes].width);
+        if (ceil(need+widest) <= usageWidth) break;
+    }
     CGFloat labelWidth = 0, valueWidth = 0, lead = glyph ? WattUsageLead : 0;
     for (NSString *label in labels) labelWidth = MAX(labelWidth,[label sizeWithAttributes:attributes].width);
     // Reserve the widest value so the status item (and the popover anchored
@@ -644,11 +718,7 @@ static const CGFloat WattUsageLead = 16;
     valueWidth = labels.count ? [@"100%" sizeWithAttributes:attributes].width : 0;
     for (NSString *value in values) valueWidth = MAX(valueWidth,[value sizeWithAttributes:attributes].width);
     CGFloat stackWidth = labels.count ? ceil(lead+labelWidth+5+valueWidth)+3 : 0;
-    // While usage pages are on, every page takes the widest page's width from
-    // the start (not when data arrives), and values share one right edge: the
-    // item never changes size, so the menu bar beside it never moves.
-    if (WattMenuAIUsage())
-        stackWidth = MAX(stackWidth,MAX(WattStackWidth(systemLabels,0),WattStackWidth(@[@"5h",@"wk"],WattUsageLead)));
+    if (_menuPage || (WattMenuAIUsage() && systemWidth == 0)) stackWidth = usageWidth;
     NSString *charge = self.powerFlowView.chargePercent < 0 ? @"—%" :
         [NSString stringWithFormat:@"%ld%%",(long)self.powerFlowView.chargePercent];
     NSDictionary *chargeStyle = @{NSFontAttributeName:
@@ -663,12 +733,13 @@ static const CGFloat WattUsageLead = 16;
         NSMakeSize(MAX(24,stackWidth+percentWidth+iconGap+(icon ? iconWidth+1 : 0)),24)] autorelease];
     [combined lockFocus];
     CGFloat height = [@"100%" sizeWithAttributes:attributes].height;
-    [glyph drawInRect:NSMakeRect(1,6,12,12)];
+    [glyph drawInRect:NSMakeRect(1,6.5,11,11)];
     for (NSInteger i=0;i<labels.count;i++) {
         CGFloat y = (24-height)/2 + ((labels.count-1)/2.0-i)*8;
         [labels[i] drawAtPoint:NSMakePoint(lead+1,y) withAttributes:attributes];
-        [values[i] drawAtPoint:NSMakePoint(stackWidth-3-[values[i] sizeWithAttributes:attributes].width,y)
-                withAttributes:attributes];
+        // Metrics keep their usual column; usage values end where "100%" would.
+        [values[i] drawAtPoint:NSMakePoint(_menuPage ? stackWidth-3-[values[i] sizeWithAttributes:attributes].width :
+            lead+labelWidth+6,y) withAttributes:attributes];
     }
     if (percent) [charge drawAtPoint:NSMakePoint(stackWidth+percentGap,
         (24-[charge sizeWithAttributes:chargeStyle].height)/2) withAttributes:chargeStyle];

@@ -60,6 +60,26 @@ BOOL WattKeepAwakeFollowsPower(void) {
 BOOL WattKeepAwakeWanted(BOOL pluggedIn, NSTimeInterval unpluggedFor) {
     return pluggedIn || unpluggedFor < 30;
 }
+// AI usage pages: page n+1 belongs to WattAIProviderIDs()[n].
+NSArray *WattAIProviderIDs(void) { return @[@"claude", @"codex"]; }
+NSString *WattAIProviderName(NSString *provider) {
+    return @{@"claude":@"Claude", @"codex":@"ChatGPT"}[provider] ?: provider;
+}
+// The user's order: saved providers first, any not yet saved after them.
+NSArray *WattAIUsageOrder(void) {
+    NSArray *known = WattAIProviderIDs();
+    NSMutableArray *order = [NSMutableArray array];
+    for (id provider in [NSUserDefaults.standardUserDefaults arrayForKey:@"WattNookAIUsageOrder"])
+        if ([known containsObject:provider] && ![order containsObject:provider]) [order addObject:provider];
+    for (NSString *provider in known) if (![order containsObject:provider]) [order addObject:provider];
+    return order;
+}
+NSArray *WattAIUsageShown(void) {
+    NSArray *hidden = [NSUserDefaults.standardUserDefaults arrayForKey:@"WattNookAIUsageHidden"];
+    NSMutableArray *shown = [NSMutableArray array];
+    for (NSString *provider in WattAIUsageOrder()) if (![hidden containsObject:provider]) [shown addObject:provider];
+    return shown;
+}
 // Off by default: on, WattNook reads the Claude Code and Codex logins.
 BOOL WattMenuAIUsage(void) {
     return [NSUserDefaults.standardUserDefaults boolForKey:@"WattNookMenuAIUsage"];

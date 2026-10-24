@@ -592,6 +592,14 @@ static void Redisplay(NSView *view) {
         check.font = [NSFont systemFontOfSize:12];
         [_settingsPage addSubview:check]; [_metricChecks addObject:check];
     }
+    // Which AI services rotate, and their order, from a menu beside the toggle.
+    ((NSButton *)_metricChecks[5]).frame = NSMakeRect(200,210,136,24);
+    NSButton *aiOptions = [NSButton buttonWithImage:[NSImage imageWithSystemSymbolName:@"slider.horizontal.3"
+        accessibilityDescription:@"AI usage options"] target:c action:@selector(showAIUsageOptions:)];
+    aiOptions.frame = NSMakeRect(340,210,28,24); aiOptions.bordered = NO;
+    aiOptions.toolTip = @"Choose which AI services to show, and their order";
+    aiOptions.identifier = @"aiUsageOptions";
+    [_settingsPage addSubview:aiOptions];
     Label(_settingsPage,NSMakeRect(32,152,336,20),@"Monitoring",13,YES);
     _monitoringCheck = [NSButton checkboxWithTitle:@"System monitoring" target:self action:@selector(monitoring:)];
     _monitoringCheck.frame = NSMakeRect(32,108,336,24); [_settingsPage addSubview:_monitoringCheck];
@@ -859,7 +867,7 @@ static void Redisplay(NSView *view) {
     ((NSButton *)_metricChecks[4]).state = WattMenuBatteryIcon() ? NSControlStateValueOn : NSControlStateValueOff;
     ((NSButton *)_metricChecks[2]).toolTip = @"SSD storage space used as a percentage; read/write activity is available in System";
     ((NSButton *)_metricChecks[5]).state = WattMenuAIUsage() ? NSControlStateValueOn : NSControlStateValueOff;
-    ((NSButton *)_metricChecks[5]).toolTip = @"Every 20 seconds the menu bar shows your Claude and ChatGPT (Codex) 5-hour and weekly limits for a moment, as the share still left. Uses the Claude Code and Codex logins on this Mac, read only.";
+    ((NSButton *)_metricChecks[5]).toolTip = @"Every 10 seconds the menu bar shows your Claude and ChatGPT (Codex) 5-hour and weekly limits for a moment, as the share still left. Uses the Claude Code and Codex logins on this Mac, read only.";
 }
 @end
 
