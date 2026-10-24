@@ -548,14 +548,6 @@ static NSDictionary *WattStackFont(CGFloat size) {
 
 static NSDictionary *WattStackAttributes(NSUInteger rows) { return WattStackFont(rows > 1 ? 8.5 : 11); }
 
-static CGFloat WattStackWidth(NSArray *labels, CGFloat lead) {
-    if (!labels.count) return 0;
-    NSDictionary *attributes = WattStackAttributes(labels.count);
-    CGFloat labelWidth = 0;
-    for (NSString *label in labels) labelWidth = MAX(labelWidth,[label sizeWithAttributes:attributes].width);
-    return ceil(lead+labelWidth+5+[@"100%" sizeWithAttributes:attributes].width)+3;
-}
-
 // The usage pages' 11 pt mark plus its gap before the labels.
 static const CGFloat WattUsageLead = 14;
 
@@ -693,38 +685,44 @@ static void WattPermutations(NSArray *items, NSArray *prefix, NSMutableArray *in
     if (_menuPage) {
         NSInteger base = (_menuPage-1)*2;
         NSString *provider = WattAIProviderIDs()[_menuPage-1];
-        // Grok has only a weekly pool; its page is the one "wk" row.
+        // Grok has only a weekly pool: its "wk" keeps the row it has on the
+        // other pages, above it stays blank.
         BOOL weekOnly = [provider isEqual:@"grok"];
         labels = [NSMutableArray array];
         values = [NSMutableArray array];
-        for (NSInteger i = weekOnly ? 1 : 0; i < 2; i++) {
-            [labels addObject:i ? @"wk" : @"5h"];
-            [values addObject:_aiUsage[base+i] < 0 ? @"—" : [NSString stringWithFormat:@"%.0f%%",_aiUsage[base+i]]];
+        for (NSInteger i = 0; i < 2; i++) {
+            BOOL blank = weekOnly && i == 0;
+            [labels addObject:blank ? @"" : i ? @"wk" : @"5h"];
+            [values addObject:blank ? @"" : _aiUsage[base+i] < 0 ? @"—" :
+                [NSString stringWithFormat:@"%.0f%%",_aiUsage[base+i]]];
         }
         glyph = WattAIGlyph(provider);
         NSString *note = _menuPage-1 < (NSInteger)self.aiUsageNotes.count ? self.aiUsageNotes[_menuPage-1] : nil;
         usageNote = note.length ? note : nil;
     }
-    // Every page keeps the metrics' type size. While usage pages are on, all
-    // pages share the wider of the two natural widths, so the item never
-    // resizes and the menu bar beside it never moves; the narrower page is
-    // centred in it, splitting the few spare points evenly instead of leaving
-    // one gap (and shrinking usage text to fit made it read smaller).
-    CGFloat systemWidth = WattStackWidth(systemLabels,0);
-    CGFloat usageWidth = WattStackWidth(@[@"5h",@"wk"],WattUsageLead);
-    CGFloat pageWidth = WattMenuAIUsage() ? MAX(systemWidth,usageWidth) : 0;
-    // A one-row usage page (Grok) keeps the two-row size of its neighbours.
     NSDictionary *attributes = _menuPage ? WattStackAttributes(2) : WattStackAttributes(labels.count);
     CGFloat labelWidth = 0, valueWidth = 0, lead = glyph ? WattUsageLead : 0;
     for (NSString *label in labels) labelWidth = MAX(labelWidth,[label sizeWithAttributes:attributes].width);
+    CGFloat valueX = lead+labelWidth+6;
     // Reserve the widest value so the status item (and the popover anchored
     // to it) does not shift as readings change.
     valueWidth = labels.count ? [@"100%" sizeWithAttributes:attributes].width : 0;
     for (NSString *value in values) valueWidth = MAX(valueWidth,[value sizeWithAttributes:attributes].width);
-    CGFloat stackWidth = labels.count ? ceil(lead+labelWidth+5+valueWidth)+3 : 0;
-    if (_menuPage) stackWidth = usageWidth;
-    CGFloat inset = floor(MAX(0,pageWidth-stackWidth)/2);
-    stackWidth = MAX(stackWidth,pageWidth);
+    CGFloat stackWidth = labels.count ? ceil(valueX-1+valueWidth)+3 : 0;
+    if (WattMenuAIUsage()) {
+        // While usage pages rotate, every page shares one grid: the mark and
+        // "5h"/"wk" sit where "CPU"/"RAM" do, the percentages start in one
+        // column, and the item keeps one width, so nothing on it or beside it
+        // moves as pages change.
+        NSDictionary *systemFont = WattStackAttributes(systemLabels.count), *usageFont = WattStackAttributes(2);
+        CGFloat systemColumn = 0, usageColumn = WattUsageLead+MAX([@"5h" sizeWithAttributes:usageFont].width,
+            [@"wk" sizeWithAttributes:usageFont].width);
+        for (NSString *label in systemLabels) systemColumn = MAX(systemColumn,[label sizeWithAttributes:systemFont].width);
+        valueX = MAX(systemColumn,usageColumn)+6;
+        valueWidth = MAX(valueWidth,MAX([@"100%" sizeWithAttributes:usageFont].width,
+            systemLabels.count ? [@"100%" sizeWithAttributes:systemFont].width : 0));
+        stackWidth = ceil(valueX-1+valueWidth)+3;
+    }
     NSString *charge = self.powerFlowView.chargePercent < 0 ? @"—%" :
         [NSString stringWithFormat:@"%ld%%",(long)self.powerFlowView.chargePercent];
     NSDictionary *chargeStyle = @{NSFontAttributeName:
@@ -739,13 +737,11 @@ static void WattPermutations(NSArray *items, NSArray *prefix, NSMutableArray *in
         NSMakeSize(MAX(24,stackWidth+percentWidth+iconGap+(icon ? iconWidth+1 : 0)),24)] autorelease];
     [combined lockFocus];
     CGFloat height = [@"100%" sizeWithAttributes:attributes].height;
-    [glyph drawInRect:NSMakeRect(inset+1,6.5,11,11)];
+    [glyph drawInRect:NSMakeRect(1,6.5,11,11)];
     for (NSInteger i=0;i<labels.count;i++) {
         CGFloat y = (24-height)/2 + ((labels.count-1)/2.0-i)*8;
-        [labels[i] drawAtPoint:NSMakePoint(inset+lead+1,y) withAttributes:attributes];
-        // Metrics keep their usual column; usage values end where "100%" would.
-        [values[i] drawAtPoint:NSMakePoint(_menuPage ? stackWidth-inset-3-[values[i] sizeWithAttributes:attributes].width :
-            inset+lead+labelWidth+6,y) withAttributes:attributes];
+        [labels[i] drawAtPoint:NSMakePoint(lead+1,y) withAttributes:attributes];
+        [values[i] drawAtPoint:NSMakePoint(valueX,y) withAttributes:attributes];
     }
     if (percent) [charge drawAtPoint:NSMakePoint(stackWidth+percentGap,
         (24-[charge sizeWithAttributes:chargeStyle].height)/2) withAttributes:chargeStyle];
