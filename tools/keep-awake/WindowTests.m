@@ -15,6 +15,7 @@ void battMenuAction(uintptr_t handle, int item, bool checked) { (void)handle; (v
 bool battMenuSetLimit(uintptr_t handle, int limit) { (void)handle; (void)limit; return true; }
 void battMainCallback(uintptr_t handle) { (void)handle; }
 void battStorageAction(uintptr_t handle,uint64_t generation,int action) {}
+void battAIUsageRequested(uintptr_t handle) { (void)handle; }
 
 @interface WindowTestController : BattMenuController
 @property(nonatomic, assign) NSUInteger refreshes;

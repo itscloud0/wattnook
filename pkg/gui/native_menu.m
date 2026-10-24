@@ -67,6 +67,7 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
         _diskReadRate = -1;
         _diskWriteRate = -1;
         _diskSpacePercent = -1;
+        for (NSInteger i = 0; i < 4; i++) _aiUsage[i] = -1;
         _powerFlowView = [[BattPowerFlowView alloc] initWithFrame:NSMakeRect(0, 0, 340, 220)];
 
         BattBuildMenu(self, version);
@@ -83,6 +84,7 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
                                                   repeats:YES] retain];
         _timer.tolerance = 1.0;
         [self applyMonitoringPreferences];
+        [self applyAIUsagePreference];
         BattUpdateBattery(self);
     }
     return self;
@@ -102,6 +104,10 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     [_timer release];
     [_statsTimer invalidate];
     [_statsTimer release];
+    [_menuPageTimer invalidate];
+    [_menuPageTimer release];
+    [_claudeUsageNote release];
+    [_codexUsageNote release];
     _menu.delegate = nil;
     [[NSStatusBar systemStatusBar] removeStatusItem:_statusItem];
     [_statusItem release];
@@ -456,6 +462,107 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     if (self.popover.isShown) [self refreshPopoverControls];
 }
 
+// The system metrics stay longest; each usage page is a short glance.
+static const NSTimeInterval WattMenuSystemDwell = 20, WattMenuUsageDwell = 8;
+static const NSTimeInterval WattUsageRefreshInterval = 300;
+
+// Monochrome marks for the usage pages, templated with the rest of the item:
+// Claude's spark (rays of three lengths) and OpenAI's six-link blossom.
+static NSImage *WattAIGlyph(BOOL claude) {
+    return [NSImage imageWithSize:NSMakeSize(12,12) flipped:NO drawingHandler:^BOOL(NSRect rect) {
+        NSPoint c = NSMakePoint(NSMidX(rect),NSMidY(rect));
+        [NSColor.blackColor set];
+        if (claude) {
+            static const CGFloat lengths[3] = {6, 4.6, 5.4};
+            for (NSInteger i=0;i<12;i++) {
+                CGFloat a = (i*30+15)*M_PI/180, r = lengths[i%3];
+                NSBezierPath *ray = [NSBezierPath bezierPath];
+                ray.lineWidth = 1.5; ray.lineCapStyle = NSLineCapStyleRound;
+                [ray moveToPoint:c];
+                [ray lineToPoint:NSMakePoint(c.x+cos(a)*(r-0.75),c.y+sin(a)*(r-0.75))];
+                [ray stroke];
+            }
+            return YES;
+        }
+        for (NSInteger i=0;i<6;i++) {
+            NSAffineTransform *t = [NSAffineTransform transform];
+            [t translateXBy:c.x yBy:c.y]; [t rotateByDegrees:i*60];
+            NSBezierPath *link = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(-1.4,0.6,4.2,4.8)
+                xRadius:2.1 yRadius:2.1];
+            link.lineWidth = 1.1;
+            [link transformUsingAffineTransform:t];
+            [link stroke];
+        }
+        return YES;
+    }];
+}
+
+static NSDictionary *WattStackAttributes(NSUInteger rows) {
+    return @{NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:rows > 1 ? 8.5 : 11 weight:NSFontWeightMedium],
+             NSForegroundColorAttributeName:NSColor.whiteColor};
+}
+
+static CGFloat WattStackWidth(NSArray *labels, CGFloat lead) {
+    if (!labels.count) return 0;
+    NSDictionary *attributes = WattStackAttributes(labels.count);
+    CGFloat labelWidth = 0;
+    for (NSString *label in labels) labelWidth = MAX(labelWidth,[label sizeWithAttributes:attributes].width);
+    return ceil(lead+labelWidth+5+[@"100%" sizeWithAttributes:attributes].width)+3;
+}
+
+// Page 0 is the system metrics; 1 Claude and 2 ChatGPT, while they have data.
+- (NSArray *)menuPages {
+    NSMutableArray *pages = [NSMutableArray arrayWithObject:@0];
+    if (!WattMenuAIUsage()) return pages;
+    if (_aiUsage[0] >= 0 || _aiUsage[1] >= 0) [pages addObject:@1];
+    if (_aiUsage[2] >= 0 || _aiUsage[3] >= 0) [pages addObject:@2];
+    return pages;
+}
+
+- (void)scheduleMenuPage {
+    [self.menuPageTimer invalidate];
+    self.menuPageTimer = [NSTimer scheduledTimerWithTimeInterval:_menuPage ? WattMenuUsageDwell : WattMenuSystemDwell
+        target:self selector:@selector(advanceMenuPage:) userInfo:nil repeats:NO];
+    self.menuPageTimer.tolerance = 0.5;
+}
+
+- (void)requestAIUsageIfStale {
+    NSTimeInterval now = NSDate.timeIntervalSinceReferenceDate;
+    if (_aiUsageRequestedAt && now-_aiUsageRequestedAt < WattUsageRefreshInterval) return;
+    _aiUsageRequestedAt = now;
+    battAIUsageRequested(_handle);
+}
+
+- (void)advanceMenuPage:(NSTimer *)timer {
+    (void)timer;
+    [self requestAIUsageIfStale];
+    NSArray *pages = [self menuPages];
+    NSUInteger index = [pages indexOfObject:@(_menuPage)];
+    _menuPage = [pages[index == NSNotFound ? 0 : (index+1)%pages.count] integerValue];
+    [self refreshStatusImage];
+    [self scheduleMenuPage];
+}
+
+- (void)applyAIUsagePreference {
+    if (WattMenuAIUsage()) {
+        if (!self.menuPageTimer.isValid) [self scheduleMenuPage];
+        [self requestAIUsageIfStale];
+    } else {
+        [self.menuPageTimer invalidate]; self.menuPageTimer = nil;
+        for (NSInteger i = 0; i < 4; i++) _aiUsage[i] = -1;
+        self.claudeUsageNote = nil; self.codexUsageNote = nil;
+        _menuPage = 0; _aiUsageRequestedAt = 0;
+    }
+    [self refreshStatusImage];
+}
+
+- (void)setAIUsage:(const double *)usage claudeNote:(NSString *)claude codexNote:(NSString *)codex {
+    if (!WattMenuAIUsage()) return; // a late answer after the setting went off
+    for (NSInteger i = 0; i < 4; i++) _aiUsage[i] = usage[i];
+    self.claudeUsageNote = claude; self.codexUsageNote = codex;
+    [self refreshStatusImage];
+}
+
 - (void)refreshStatusImage {
     NSArray *metrics = WattMenuMetrics();
     NSMutableArray *labels = [NSMutableArray array], *values = [NSMutableArray array];
@@ -474,17 +581,30 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
     BOOL icon = WattMenuBatteryIcon() || (labels.count == 0 && !percent);
     // With the icon on, the number sits inside it, as macOS draws it.
     if (percent && icon && self.batteryIconShowsPercent) percent = NO;
-    CGFloat fontSize = labels.count > 1 ? 8.5 : 11;
-    NSDictionary *attributes = @{
-        NSFontAttributeName:[NSFont monospacedDigitSystemFontOfSize:fontSize weight:NSFontWeightMedium],
-        NSForegroundColorAttributeName:NSColor.whiteColor};
-    CGFloat labelWidth = 0, valueWidth = 0;
+    NSArray *pages = [self menuPages], *systemLabels = [[labels copy] autorelease];
+    if (![pages containsObject:@(_menuPage)]) _menuPage = 0;
+    NSImage *glyph = nil;
+    NSString *usageNote = nil;
+    if (_menuPage) {
+        NSInteger base = _menuPage == 1 ? 0 : 2;
+        labels = [NSMutableArray arrayWithObjects:@"5h",@"Wk",nil];
+        values = [NSMutableArray array];
+        for (NSInteger i=0;i<2;i++) [values addObject:_aiUsage[base+i] < 0 ? @"—" :
+            [NSString stringWithFormat:@"%.0f%%",_aiUsage[base+i]]];
+        glyph = WattAIGlyph(_menuPage == 1);
+        usageNote = _menuPage == 1 ? self.claudeUsageNote : self.codexUsageNote;
+    }
+    NSDictionary *attributes = WattStackAttributes(labels.count);
+    CGFloat labelWidth = 0, valueWidth = 0, lead = glyph ? glyph.size.width+4 : 0;
     for (NSString *label in labels) labelWidth = MAX(labelWidth,[label sizeWithAttributes:attributes].width);
     // Reserve the widest value so the status item (and the popover anchored
     // to it) does not shift as readings change.
     valueWidth = labels.count ? [@"100%" sizeWithAttributes:attributes].width : 0;
     for (NSString *value in values) valueWidth = MAX(valueWidth,[value sizeWithAttributes:attributes].width);
-    CGFloat stackWidth = labels.count ? ceil(labelWidth+5+valueWidth)+3 : 0;
+    CGFloat stackWidth = labels.count ? ceil(lead+labelWidth+5+valueWidth)+3 : 0;
+    // Every page takes the widest page's width, so rotating never shifts the menu bar.
+    if (pages.count > 1)
+        stackWidth = MAX(stackWidth,MAX(WattStackWidth(systemLabels,0),WattStackWidth(@[@"5h",@"Wk"],16)));
     NSString *charge = self.powerFlowView.chargePercent < 0 ? @"—%" :
         [NSString stringWithFormat:@"%ld%%",(long)self.powerFlowView.chargePercent];
     NSDictionary *chargeStyle = @{NSFontAttributeName:
@@ -499,10 +619,11 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
         NSMakeSize(MAX(24,stackWidth+percentWidth+iconGap+(icon ? iconWidth+1 : 0)),24)] autorelease];
     [combined lockFocus];
     CGFloat height = [@"100%" sizeWithAttributes:attributes].height;
+    [glyph drawInRect:NSMakeRect(1,6,12,12)];
     for (NSInteger i=0;i<labels.count;i++) {
         CGFloat y = (24-height)/2 + ((labels.count-1)/2.0-i)*8;
-        [labels[i] drawAtPoint:NSMakePoint(1,y) withAttributes:attributes];
-        [values[i] drawAtPoint:NSMakePoint(labelWidth+6,y) withAttributes:attributes];
+        [labels[i] drawAtPoint:NSMakePoint(lead+1,y) withAttributes:attributes];
+        [values[i] drawAtPoint:NSMakePoint(lead+labelWidth+6,y) withAttributes:attributes];
     }
     if (percent) [charge drawAtPoint:NSMakePoint(stackWidth+percentGap,
         (24-[charge sizeWithAttributes:chargeStyle].height)/2) withAttributes:chargeStyle];
@@ -535,7 +656,8 @@ static NSMenu *AddSubmenu(BattMenuController *controller,
         self.batteryColorView.hidden = YES;
     }
     NSMutableArray *descriptions = [NSMutableArray arrayWithObject:@"WattNook"];
-    for (NSInteger i=0;i<labels.count;i++)
+    if (usageNote.length) [descriptions addObject:usageNote];
+    else for (NSInteger i=0;i<labels.count;i++)
         [descriptions addObject:[NSString stringWithFormat:@"%@ %@",
             [labels[i] isEqual:@"SSD"] ? @"SSD space used" : labels[i],values[i]]];
     if (percent && !self.statusItem.button.toolTip.length)

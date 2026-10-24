@@ -120,7 +120,11 @@ extern void battMenuAction(uintptr_t handle, int item, bool checked);
 extern bool battMenuSetLimit(uintptr_t handle, int limit_percent);
 extern void battMainCallback(uintptr_t callback);
 extern void battStorageAction(uintptr_t handle, uint64_t generation, int action);
+extern void battAIUsageRequested(uintptr_t handle);
 char *WattInspectStorageApplication(const char *path);
 void batt_menu_storage_update(BattMenuRef menu, uint64_t generation, const char *json);
+// Percentages are -1 when unknown; notes are tooltip lines, empty when signed out.
+void batt_menu_set_ai_usage(BattMenuRef menu, double claude_session, double claude_week, const char *claude_note,
+                            double codex_session, double codex_week, const char *codex_note);
 
 #endif

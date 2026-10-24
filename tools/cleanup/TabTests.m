@@ -9,6 +9,7 @@ bool battMenuSetLimit(uintptr_t h,int i) {return true;}
 void battMainCallback(uintptr_t h) {}
 static int lastAction,actionCount;static uint64_t lastGeneration;
 void battStorageAction(uintptr_t h,uint64_t g,int a){lastAction=a;lastGeneration=g;actionCount++;}
+void battAIUsageRequested(uintptr_t h){(void)h;}
 static NSButton *FindButton(NSView *v,NSString *title){
  for(NSView *child in v.subviews){
   if([child isKindOfClass:NSButton.class]&&[((NSButton *)child).title isEqual:title])return (NSButton *)child;

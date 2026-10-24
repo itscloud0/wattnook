@@ -49,8 +49,10 @@ void battMenuTimerFired(uintptr_t handle) { (void)handle; }
 void battMenuAction(uintptr_t handle, int item, bool checked) { (void)handle; (void)item; (void)checked; }
 static int requestedLimit = -1;
 static int mainCallbacks;
+static int usageRequests;
 void battMainCallback(uintptr_t handle) { assert(handle == 123); assert(NSThread.isMainThread); mainCallbacks++; }
 void battStorageAction(uintptr_t handle,uint64_t generation,int action) {}
+void battAIUsageRequested(uintptr_t handle) { (void)handle; usageRequests++; }
 bool battMenuSetLimit(uintptr_t handle, int limit) { (void)handle; requestedLimit = limit; return true; }
 
 static NSButton *FindButton(NSView *view, NSString *title) {
@@ -512,6 +514,37 @@ int main(int argc, const char *argv[]) {
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookMenuMetrics"];
         [c setLiveStatusCharge:48 pluggedIn:NO charging:NO heatPaused:NO];
         assert(!c.batteryIconShowsPercent);
+        // Usage pages: off by default; on, they rotate without moving the menu bar.
+        [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookMenuAIUsage"]; // a crashed run may leave it on
+        [c applyAIUsagePreference];
+        assert(!WattMenuAIUsage() && c.menuPageTimer == nil);
+        [c refreshStatusImage];
+        CGFloat systemOnly = c.statusItem.button.image.size.width;
+        [NSUserDefaults.standardUserDefaults setBool:YES forKey:@"WattNookMenuAIUsage"];
+        usageRequests = 0; [c applyAIUsagePreference];
+        assert(usageRequests == 1 && c.menuPageTimer.isValid);
+        [c applyAIUsagePreference]; assert(usageRequests == 1); // fresh: no second request
+        assert(c.statusItem.button.image.size.width == systemOnly); // no data, no reservation
+        double usage[4] = {34, 12, -1, 40};
+        [c setAIUsage:usage claudeNote:@"Claude: 5-hour 34%, week 12%" codexNote:@"ChatGPT: week 40%"];
+        CGFloat rotating = c.statusItem.button.image.size.width;
+        assert(rotating >= systemOnly);
+        NSMutableArray *pageLabels = [NSMutableArray array];
+        for (NSInteger i = 0; i < 3; i++) {
+            [c advanceMenuPage:nil];
+            assert(c.statusItem.button.image.size.width == rotating && c.statusItem.button.image.isTemplate);
+            [pageLabels addObject:c.statusItem.button.accessibilityLabel];
+            if (!getenv("WATTNOOK_CHECKS_ONLY")) [c.statusItem.button.image.TIFFRepresentation writeToFile:
+                [directory stringByAppendingPathComponent:[NSString stringWithFormat:@"menu-usage-%ld.tiff",(long)i]] atomically:YES];
+        }
+        assert([pageLabels[0] containsString:@"Claude: 5-hour 34%"] && [pageLabels[1] containsString:@"ChatGPT: week 40%"]);
+        assert([pageLabels[2] containsString:@"SSD space used"] && ![pageLabels[2] containsString:@"Claude"]);
+        [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"WattNookMenuAIUsage"];
+        [c applyAIUsagePreference];
+        assert(c.menuPageTimer == nil && c.statusItem.button.image.size.width == systemOnly);
+        [c setAIUsage:usage claudeNote:@"Claude: late" codexNote:@""]; // an answer after switching off
+        [c advanceMenuPage:nil]; assert(![c.statusItem.button.accessibilityLabel containsString:@"Claude"]);
+        [c.menuPageTimer invalidate]; c.menuPageTimer = nil;
         BattRefreshPopover(c,63,81);
         [system performClick:nil]; assert(c.powerFlowView.hiddenOrHasHiddenAncestor);
         NSArray *consumerRows = [view valueForKey:@"_rows"];
@@ -663,6 +696,9 @@ int main(int argc, const char *argv[]) {
         [FindButton(view,@"Battery percentage") performClick:nil];
         [FindButton(view,@"Battery icon") performClick:nil];
         assert([WattMenuMetrics() isEqual:@[@"Battery"]] && !WattMenuBatteryIcon());
+        assert(FindButton(view,@"AI usage limits") && !WattMenuAIUsage());
+        [FindButton(view,@"AI usage limits") performClick:nil]; assert(WattMenuAIUsage() && c.menuPageTimer.isValid);
+        [FindButton(view,@"AI usage limits") performClick:nil]; assert(!WattMenuAIUsage() && c.menuPageTimer == nil);
         [FindButton(view,@"Battery") performClick:nil];
         Capture(view,directory,@"palette-mint");
         [gear performClick:nil]; [FindButton(view,@"Blue") performClick:nil];

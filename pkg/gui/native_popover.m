@@ -577,7 +577,7 @@ static void Redisplay(NSView *view) {
         palette.hidden = [palettes[i] isEqual:@"Glass"] && !WattGlassAvailable();
     }
     Label(_settingsPage,NSMakeRect(32,312,336,20),@"Menu bar",13,YES);
-    NSArray *titles = @[@"CPU load",@"Memory used",@"SSD used",@"Battery percentage",@"Battery icon"];
+    NSArray *titles = @[@"CPU load",@"Memory used",@"SSD used",@"Battery percentage",@"Battery icon",@"AI usage limits"];
     for (NSInteger i=0;i<titles.count;i++) {
         NSButton *check = [NSButton checkboxWithTitle:titles[i] target:self action:@selector(menuMetric:)];
         check.frame = NSMakeRect(32+(i%2)*168,266-(i/2)*28,160,24); check.tag = i;
@@ -640,9 +640,14 @@ static void Redisplay(NSView *view) {
     for (NSInteger i=0;i<4;i++)
         if (((NSButton *)_metricChecks[i]).state == NSControlStateValueOn) [metrics addObject:names[i]];
     BOOL icon = ((NSButton *)_metricChecks[4]).state == NSControlStateValueOn;
+    BOOL usage = ((NSButton *)_metricChecks[5]).state == NSControlStateValueOn;
     if (metrics.count == 0 && !icon) icon = YES; // Keep a way back into the app.
     [NSUserDefaults.standardUserDefaults setObject:metrics forKey:@"WattNookMenuMetrics"];
     [NSUserDefaults.standardUserDefaults setBool:icon forKey:@"WattNookMenuBatteryIcon"];
+    if (usage != WattMenuAIUsage()) {
+        [NSUserDefaults.standardUserDefaults setBool:usage forKey:@"WattNookMenuAIUsage"];
+        [self.controller applyAIUsagePreference];
+    }
     BattUpdateBattery(self.controller); // re-renders the icon, with or without its number
     [self.controller refreshStatusImage]; [self refreshCPU:_cpu memory:_memory];
 }
@@ -842,6 +847,8 @@ static void Redisplay(NSView *view) {
         [metrics containsObject:@[@"CPU",@"RAM",@"SSD",@"Battery"][i]] ? NSControlStateValueOn : NSControlStateValueOff;
     ((NSButton *)_metricChecks[4]).state = WattMenuBatteryIcon() ? NSControlStateValueOn : NSControlStateValueOff;
     ((NSButton *)_metricChecks[2]).toolTip = @"SSD storage space used as a percentage; read/write activity is available in System";
+    ((NSButton *)_metricChecks[5]).state = WattMenuAIUsage() ? NSControlStateValueOn : NSControlStateValueOff;
+    ((NSButton *)_metricChecks[5]).toolTip = @"Every 20 seconds the menu bar shows your Claude and ChatGPT (Codex) 5-hour and weekly limits for a moment. Uses the Claude Code and Codex logins on this Mac, read only.";
 }
 @end
 

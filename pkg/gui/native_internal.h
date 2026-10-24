@@ -81,6 +81,10 @@ enum { WattHistoryCapacity = 90 };
     double _memoryPercent;
     double _diskPercent;
     NSTimeInterval _previousProcessSampleTime;
+    // Claude 5-hour, Claude week, ChatGPT 5-hour, ChatGPT week; -1 unknown.
+    double _aiUsage[4];
+    NSInteger _menuPage;
+    NSTimeInterval _aiUsageRequestedAt;
 }
 @property(nonatomic, assign) uintptr_t handle;
 @property(nonatomic, retain) NSStatusItem *statusItem;
@@ -89,6 +93,10 @@ enum { WattHistoryCapacity = 90 };
 @property(nonatomic, assign) BOOL batteryIconHasColor;
 // The icon carries the charge number itself (Apple's percentage style).
 @property(nonatomic, assign) BOOL batteryIconShowsPercent;
+// Rotates the menu-bar metrics with Claude and ChatGPT usage pages.
+@property(nonatomic, retain) NSTimer *menuPageTimer;
+@property(nonatomic, copy) NSString *claudeUsageNote;
+@property(nonatomic, copy) NSString *codexUsageNote;
 @property(nonatomic, retain) NSMenu *menu;
 @property(nonatomic, retain) NSMutableDictionary<NSNumber *, NSMenuItem *> *items;
 @property(nonatomic, retain) NSTimer *timer;
@@ -164,6 +172,9 @@ enum { WattHistoryCapacity = 90 };
 - (void)updateSystemStats:(NSTimer *)timer;
 - (void)applyMonitoringPreferences;
 - (void)refreshStatusImage;
+- (void)applyAIUsagePreference;
+- (void)advanceMenuPage:(NSTimer *)timer;
+- (void)setAIUsage:(const double *)usage claudeNote:(NSString *)claude codexNote:(NSString *)codex;
 - (void)updateAppStats;
 - (void)updateDiagnosticMenus;
 - (void)quitDiagnosedApp:(NSMenuItem *)sender;
@@ -221,4 +232,5 @@ NSColor *WattTileColor(BOOL highlighted);
 NSColor *WattWarningColor(void);
 NSArray *WattMenuMetrics(void);
 BOOL WattMenuBatteryIcon(void);
+BOOL WattMenuAIUsage(void);
 double BattCounterRate(uint64_t previous, uint64_t current, double elapsed);

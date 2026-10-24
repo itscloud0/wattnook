@@ -51,3 +51,7 @@ BOOL WattMenuBatteryIcon(void) {
     id saved = [NSUserDefaults.standardUserDefaults objectForKey:@"WattNookMenuBatteryIcon"];
     return saved == nil ? YES : [saved boolValue];
 }
+// Off by default: on, WattNook reads the Claude Code and Codex logins.
+BOOL WattMenuAIUsage(void) {
+    return [NSUserDefaults.standardUserDefaults boolForKey:@"WattNookMenuAIUsage"];
+}
