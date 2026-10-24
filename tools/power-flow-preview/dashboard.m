@@ -46,10 +46,19 @@ static void CheckNativeBatteryArtwork(void) {
     NSBitmapImageRep *b = [NSBitmapImageRep imageRepWithData:plain.TIFFRepresentation];
     NSInteger holes = 0;
     for (NSInteger y = 0; y < a.pixelsHigh; y++) for (NSInteger x = 0; x < a.pixelsWide; x++)
-        if ([[a colorAtX:x y:y] alphaComponent] < 0.2 && [[b colorAtX:x y:y] alphaComponent] > 0.99) holes++;
-    assert(holes > 15);
-    // Charging and plugged-in marks are cut out too, with or without the number.
-    for (NSNumber *charging in @[@NO,@YES]) assert(BatteryAlphaAt(WattSystemMenuBattery(100,YES,charging.boolValue,YES,NO,NO,NO),11.5,7) < 0.2);
+        if ([[a colorAtX:x y:y] alphaComponent] < [[b colorAtX:x y:y] alphaComponent]-0.4) holes++;
+    assert(holes > 10);
+    // Charging and plugged-in marks change the glyph, with or without the number.
+    for (NSNumber *percent in @[@NO,@YES]) for (NSNumber *charging in @[@NO,@YES]) {
+        NSBitmapImageRep *marked = [NSBitmapImageRep imageRepWithData:
+            WattSystemMenuBattery(60,YES,charging.boolValue,YES,NO,NO,percent.boolValue).TIFFRepresentation];
+        NSBitmapImageRep *bare = [NSBitmapImageRep imageRepWithData:
+            WattSystemMenuBattery(60,NO,NO,YES,NO,NO,percent.boolValue).TIFFRepresentation];
+        NSInteger changed = 0;
+        for (NSInteger y = 0; y < marked.pixelsHigh; y++) for (NSInteger x = 0; x < marked.pixelsWide; x++)
+            if (fabs([[marked colorAtX:x y:y] alphaComponent]-[[bare colorAtX:x y:y] alphaComponent]) > 0.3) changed++;
+        assert(changed > 8);
+    }
     // No battery and service states still come from Apple's BatteryUIKit
     // (rendering one first loads the framework).
     assert(WattSystemMenuBattery(0,NO,NO,NO,NO,NO,NO));

@@ -798,7 +798,7 @@ static CGFloat WattStackWidth(NSArray *labels) {
     }
     image.template = NO;
     self.batteryIcon = image;
-    self.batteryIconHasColor = nativeImage && known && (lowPower || (!pluggedIn && charge <= 20));
+    self.batteryIconHasColor = nativeImage && known && (lowPower || charge <= 10);
     self.powerFlowView.chargePercent = charge;
     NSString *state;
     if (!known) state = present ? @"battery status unavailable" : @"battery not detected";
