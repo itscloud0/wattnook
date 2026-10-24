@@ -210,6 +210,7 @@ void BattApplyTooltips(BattMenuController *controller);
 void BattBuildPopover(BattMenuController *controller);
 void BattRefreshPopover(BattMenuController *controller, double cpu, double memory);
 NSString *WattCompactBytes(double bytes, BOOL binary);
+NSString *WattMemoryDetail(double memory, double swapped, uint64_t physical);
 void BattUpdateStorage(BattMenuController *controller);
 void BattUpdateBattery(BattMenuController *controller);
 void BattApplyBatterySnapshot(BattMenuController *controller, NSDictionary *battery);

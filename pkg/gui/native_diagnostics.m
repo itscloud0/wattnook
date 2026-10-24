@@ -1,6 +1,7 @@
 #import "native_internal.h"
 #import <libproc.h>
 #import <unistd.h>
+#import <mach/mach.h>
 #import <mach/mach_time.h>
 #include <math.h>
 
@@ -20,6 +21,18 @@ static NSString *MemoryLabel(double bytes) {
     if (bytes >= 1024.0 * 1024.0 * 1024.0)
         return [NSString stringWithFormat:@"%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0)];
     return [NSString stringWithFormat:@"%.0f MB", bytes / (1024.0 * 1024.0)];
+}
+
+// Memory that is compressed or written to swap rather than held in RAM.
+// task_name_for_pid needs no entitlement for this read-only flavor.
+static double OutOfRAMBytes(pid_t pid) {
+    mach_port_t task = MACH_PORT_NULL;
+    if (task_name_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) return 0;
+    task_vm_info_data_t info = {0};
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    kern_return_t result = task_info(task, TASK_VM_INFO, (task_info_t)&info, &count);
+    mach_port_deallocate(mach_task_self(), task);
+    return result == KERN_SUCCESS ? (double)info.compressed : 0;
 }
 
 @implementation BattMenuController (Diagnostics)
@@ -47,6 +60,7 @@ static NSString *MemoryLabel(double bytes) {
             @"path": path,
             @"cpu": @0,
             @"memory": @0,
+            @"swapped": @0,
             @"diskRead": @0,
             @"diskWrite": @0,
             @"diskAvailable": @YES,
@@ -57,7 +71,7 @@ static NSString *MemoryLabel(double bytes) {
         roots[@(getpid())] = [[@{@"pid":@(getpid()), @"name":@"WattNook",
             @"path":[NSBundle.mainBundle.bundlePath hasSuffix:@".app"] ? NSBundle.mainBundle.bundlePath : @"",
             @"bundle":NSBundle.mainBundle.bundleIdentifier ?: @"",
-            @"cpu":@0, @"memory":@0, @"diskRead":@0, @"diskWrite":@0,
+            @"cpu":@0, @"memory":@0, @"swapped":@0, @"diskRead":@0, @"diskWrite":@0,
             @"diskAvailable":@YES, @"canQuit":@NO} mutableCopy] autorelease];
     }
     NSArray *appRoots = roots.allValues;
@@ -90,7 +104,12 @@ static NSString *MemoryLabel(double bytes) {
             ? BattProcessCPUPercent([previous[0] unsignedLongLongValue],totalCPU,elapsed,timebase.numer,timebase.denom) : 0;
         struct rusage_info_v2 usage = {0};
         double read = -1, write = -1;
+        // Activity Monitor's Memory: the footprint, which also counts what is
+        // compressed or swapped. Resident size alone hid idle processes whose
+        // memory had been pushed to swap.
+        double memory = task.pti_resident_size;
         if (proc_pid_rusage(pid,RUSAGE_INFO_V2,(rusage_info_t *)&usage) == 0) {
+            if (usage.ri_phys_footprint) memory = usage.ri_phys_footprint;
             NSArray *last = self.previousProcessDisk[key];
             nextDisk[key] = @[@(usage.ri_diskio_bytesread),@(usage.ri_diskio_byteswritten),identity];
             if (last.count == 3 && [last[2] isEqual:identity]) {
@@ -101,7 +120,8 @@ static NSString *MemoryLabel(double bytes) {
         processes[key] = @{
             @"parent": @(bsd.pbi_ppid),
             @"cpu": @(cpu),
-            @"memory": @(task.pti_resident_size),
+            @"memory": @(memory),
+            @"swapped": @(MIN(memory, OutOfRAMBytes(pid))),
             @"diskRead": @(read), @"diskWrite": @(write),
             @"name": [NSString stringWithUTF8String:bsd.pbi_name] ?: @"Process",
         };
@@ -138,6 +158,7 @@ static NSString *MemoryLabel(double bytes) {
         }
         root[@"cpu"] = @([root[@"cpu"] doubleValue] + [process[@"cpu"] doubleValue]);
         root[@"memory"] = @([root[@"memory"] doubleValue] + [process[@"memory"] doubleValue]);
+        root[@"swapped"] = @([root[@"swapped"] doubleValue] + [process[@"swapped"] doubleValue]);
         if ([process[@"diskRead"] doubleValue] < 0 || [process[@"diskWrite"] doubleValue] < 0)
             root[@"diskAvailable"] = @NO;
         else {
@@ -177,9 +198,10 @@ static NSString *MemoryLabel(double bytes) {
         NSMenuItem *row = [[[NSMenuItem alloc] initWithTitle:title
                                                     action:@selector(quitDiagnosedApp:)
                                                keyEquivalent:@""] autorelease];
-        NSString *detail = [NSString stringWithFormat:@"%@ of total capacity · %.2f cores · RAM %@",
+        NSString *detail = [NSString stringWithFormat:@"%@ of total capacity · %.2f cores · Memory %@ (%@ swapped)",
             WattCPUUsageLabel([sample[@"cpu"] doubleValue],NSProcessInfo.processInfo.processorCount),
-            [sample[@"cpu"] doubleValue]/100, MemoryLabel([sample[@"memory"] doubleValue])];
+            [sample[@"cpu"] doubleValue]/100, MemoryLabel([sample[@"memory"] doubleValue]),
+            MemoryLabel([sample[@"swapped"] doubleValue])];
         row.target = self;
         row.enabled = [sample[@"canQuit"] boolValue];
         row.toolTip = [sample[@"canQuit"] boolValue] ?

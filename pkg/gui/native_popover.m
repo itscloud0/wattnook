@@ -179,6 +179,14 @@ NSString *WattCompactBytes(double bytes, BOOL binary) {
         rounded,units[unit]];
 }
 
+// The Memory list's second line: how much of the app sits in swap (or the
+// compressor) once that is worth noticing, otherwise its share of RAM.
+NSString *WattMemoryDetail(double memory, double swapped, uint64_t physical) {
+    if (isfinite(swapped) && swapped >= 64.0*1024*1024)
+        return [WattCompactBytes(swapped,YES) stringByAppendingString:@" swapped"];
+    return physical ? [NSString stringWithFormat:@"%.1f%% RAM",100*memory/physical] : @"—";
+}
+
 // A settings group: one tone step above the popover, 12 pt corners, no
 // border or shadow (the AlDente/CleanMyMac grouping, without hairlines).
 @interface WattCardView : NSView
@@ -293,8 +301,7 @@ static NSAttributedString *WattFigureWithQuietUnits(NSString *text, NSFont *font
     uint64_t physical = NSProcessInfo.processInfo.physicalMemory;
     _relative.stringValue = metric == 2 ? (diskValid ?
         [NSString stringWithFormat:@"Write %@/s",WattCompactBytes([sample[@"diskWrite"] doubleValue],NO)] : @"Sampling…") :
-        metric == 1 ? (physical ? [NSString stringWithFormat:@"%.1f%% RAM",
-            100*[sample[@"memory"] doubleValue]/physical] : @"—") : @"";
+        metric == 1 ? WattMemoryDetail([sample[@"memory"] doubleValue],[sample[@"swapped"] doubleValue],physical) : @"";
     // CPU has one value; center it instead of leaving an empty second line.
     NSRect amountFrame = _amount.frame;
     amountFrame.origin.y = metric == 0 ? 9.5 : 17;
@@ -302,7 +309,7 @@ static NSAttributedString *WattFigureWithQuietUnits(NSString *text, NSFont *font
     if (_amount.stringValue.length)
         _amount.attributedStringValue = WattFigureWithQuietUnits(_amount.stringValue, _amount.font);
     _amount.toolTip = metric == 2 ? @"Read/write throughput; includes helpers, all volumes. Not disk utilization percent." :
-        metric == 1 ? @"Resident memory, including helper processes" :
+        metric == 1 ? @"Memory as Activity Monitor counts it, helpers included. Swapped is the part compressed or written to swap instead of held in RAM." :
         @"Percentage of total CPU capacity, on the same scale as CPU load; helpers included";
     _relative.toolTip = _amount.toolTip;
     for (NSTextField *field in @[_amount,_relative]) {

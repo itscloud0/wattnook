@@ -140,6 +140,8 @@ int main(int argc, const char *argv[]) {
         assert(isnan(missing.cpu) && isnan(missing.memory) && isnan(missing.watts) && isnan(missing.disk));
         [history append:(WattMetricSample){5,30,50,12,2}]; // backwards clock clears stale timeline
         assert(history.count == 1 && [history sampleAtIndex:0].time == 5);
+        assert([WattMemoryDetail(3.7e9,2.5*1024*1024*1024,16ULL<<30) isEqual:@"2.5 GB swapped"]);
+        assert([WattMemoryDetail(1.6*1024*1024*1024,10*1024*1024,16ULL<<30) isEqual:@"10.0% RAM"]);
         assert([WattCPUUsageLabel(234,10) isEqual:@"23.4% CPU"]);
         assert([WattCPUUsageLabel(234,8) isEqual:@"29.2% CPU"]);
         assert([WattCPUUsageLabel(100,1) isEqual:@"100.0% CPU"]);
@@ -295,7 +297,7 @@ int main(int argc, const char *argv[]) {
         c.swapUsedBytes = 1.5*1024*1024*1024;
         c.appStats = @[
             @{@"pid":@123, @"name":@"ChatGPT", @"path":@"/Applications/ChatGPT.app", @"cpu":@9, @"memory":@780000000},
-            @{@"pid":@124, @"name":@"Warp", @"path":@"/Applications/Warp.app", @"cpu":@6, @"memory":@1370000000},
+            @{@"pid":@124, @"name":@"Warp", @"path":@"/Applications/Warp.app", @"cpu":@6, @"memory":@1370000000, @"swapped":@1100000000},
             @{@"pid":@125, @"name":@"Safari", @"path":@"/Applications/Safari.app", @"cpu":@4, @"memory":@500000000},
             @{@"pid":@126, @"name":@"Finder", @"path":@"/System/Library/CoreServices/Finder.app", @"cpu":@1, @"memory":@180000000},
             @{@"pid":@127, @"name":@"An application with a very long name", @"path":@"/System/Applications/Utilities/Terminal.app", @"cpu":@0, @"memory":@180000000},
