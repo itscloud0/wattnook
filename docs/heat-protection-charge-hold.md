@@ -74,6 +74,10 @@ The heat hold used to target the charge plus one point, so it would never give b
 
 At 24% on a 60 W charger the USB-C contract dropped every 4–5 s: charging started at ~3.5 A, then within 1–2 s the kernel logged `setVbusPresent 0` / `No plug detected` on the port and the PD contract re-negotiated (20 V → 5 V "usb host" → 20 V); between bursts the battery drained ~1–1.7 A. The daemon issued no pulse during it (last transition before plug-in), and it stopped by itself at ~28%, when charging current fell. AppleSmartBattery's `PortControllerInfo` counts it: `PortControllerDetachCount` 366 and `PortControllerIrqCntHrdRst` 156 on that port. The 5 s maintain loop cannot see each drop-out, so the daemon samples the detach counter every 10 s and sets `adapterWarning` ("keeps disconnecting") after 4 detaches within 2 min; it clears after 2 min with none.
 
-The same episode showed two policy gaps, now closed: a heat pause started while unplugged (useless on battery, and it pulsed CHIE), and the 25% reserve latched on battery drain, which says nothing about the adapter. Heat now waits for the adapter, and the reserve counts only a drain on AC.
+The same episode showed two policy gaps, now closed: a heat pause started while unplugged (useless on battery, and it pulsed CHIE), and the then-25% reserve latched on battery drain, which says nothing about the adapter. Heat now waits for the adapter, and the reserve counts only a drain on AC.
 
 Later the same day a heat hold landed during a drop-out: CHIE read `0x10` (macOS's own value while the charger reconnects), the pulse refused it as unknown, and the fault stopped Heat Protection, so the hot battery (38 °C, 18%) charged until it was re-enabled. `Pulse` now waits up to 2 s for `0x10` to settle and otherwise returns `ErrAdapterBusy`; nothing is written, and the daemon retries on the next loop instead of faulting.
+
+## Reserve lowered to 15 % / 20 % — 2026-10-24
+
+After a day of charger drop-outs the battery drained to 3 %; the reserve then let a 38 °C battery charge until 30 %. The user wants heat to give way only when the battery is really low: a draining heat hold now ends below 15 % (was 25 %) and re-arms at 20 % (was 30 %). The 10 % floor for starting a hold is unchanged.

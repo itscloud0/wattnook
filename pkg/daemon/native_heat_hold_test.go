@@ -389,15 +389,15 @@ func TestHeatHoldPausesLowChargeButNotADrainingOne(t *testing.T) {
 		t.Fatalf("draining hold kept: releases=%d", holder.releases)
 	}
 	// No re-hold while latched, even with the drain gone.
-	s.Percent, s.BatteryAmps = 20, 2.0
+	s.Percent, s.BatteryAmps = 17, 2.0
 	h.reconcile(true, 35, 32)
 	if len(holder.holds) != 1 {
 		t.Fatalf("re-held while latched: %v", holder.holds)
 	}
-	s.Percent = 30
+	s.Percent = 20
 	h.reconcile(true, 35, 32)
-	if len(holder.holds) != 2 || holder.holds[1] != 30 {
-		t.Fatalf("not re-armed at 30%%: %v", holder.holds)
+	if len(holder.holds) != 2 || holder.holds[1] != 20 {
+		t.Fatalf("not re-armed at 20%%: %v", holder.holds)
 	}
 	// Never start below the minimum.
 	h2, holder2, _ := newHoldFixture(heatHoldSample{Temperature: 40, Percent: 8, PluggedIn: true})

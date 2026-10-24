@@ -83,8 +83,8 @@ var heatHold *nativeHeatHold
 // the battery can recover, and it re-arms only at heatHoldRearm.
 const (
 	heatHoldMinimum  = 10
-	heatHoldReserve  = 25
-	heatHoldRearm    = 30
+	heatHoldReserve  = 15
+	heatHoldRearm    = 20
 	heatDrainingAmps = -0.1
 	// Sailing never lets the battery sail below this charge.
 	sailingAlwaysCharge = 20
