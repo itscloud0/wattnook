@@ -38,23 +38,23 @@ func battAIUsageRequested(handle C.uintptr_t) {
 		runOnMain(func() {
 			withTwoCStrings(claudeNote, codexNote, func(cn, xn *C.char) {
 				C.batt_menu_set_ai_usage(c.menu.ref,
-					C.double(windowPercent(claude.Session, claudeErr)), C.double(windowPercent(claude.Week, claudeErr)), cn,
-					C.double(windowPercent(codex.Session, codexErr)), C.double(windowPercent(codex.Week, codexErr)), xn)
+					C.double(windowLeft(claude.Session, claudeErr)), C.double(windowLeft(claude.Week, claudeErr)), cn,
+					C.double(windowLeft(codex.Session, codexErr)), C.double(windowLeft(codex.Week, codexErr)), xn)
 			})
 		})
 	}()
 }
 
-// windowPercent is the used percentage, or -1 when there is nothing to show.
-func windowPercent(w *usage.Window, err error) float64 {
+// windowLeft is the percentage still available, or -1 when there is nothing to show.
+func windowLeft(w *usage.Window, err error) float64 {
 	if err != nil || w == nil {
 		return -1
 	}
-	return w.Percent
+	return 100 - w.Percent
 }
 
 // describeLimits is the provider's tooltip line, e.g.
-// "Claude: 5-hour 34% (resets 21:00), week 12% (resets Thu 08:00)".
+// "Claude: 5-hour 66% left (resets 21:00), week 88% left (resets Thu 08:00)".
 func describeLimits(name string, limits usage.Limits, err error, now time.Time) string {
 	switch {
 	case errors.Is(err, usage.ErrNotSignedIn):
@@ -73,7 +73,7 @@ func describeLimits(name string, limits usage.Limits, err error, now time.Time) 
 		if w.window == nil {
 			continue
 		}
-		part := fmt.Sprintf("%s %.0f%%", w.label, w.window.Percent)
+		part := fmt.Sprintf("%s %.0f%% left", w.label, 100-w.window.Percent)
 		if !w.window.ResetsAt.IsZero() {
 			part += " (resets " + resetTime(w.window.ResetsAt.Local(), now.Local()) + ")"
 		}

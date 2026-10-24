@@ -22,16 +22,42 @@ static void AssertSameBatteryPixels(NSImage *actual, NSImage *expected) {
     }
 }
 
+static CGFloat BatteryAlphaAt(NSImage *image, CGFloat x, CGFloat y) {
+    NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:image.TIFFRepresentation];
+    CGFloat scale = rep.pixelsWide/image.size.width;
+    return [[rep colorAtX:(NSInteger)(x*scale) y:(NSInteger)((image.size.height-y)*scale)] alphaComponent];
+}
+
 static void CheckNativeBatteryArtwork(void) {
     if (NSProcessInfo.processInfo.operatingSystemVersion.majorVersion < 27) return;
     assert(WattNativeBatteryRendererAvailable());
+    // Control Center's measured glyph: opaque charge, 47.5% track, 57% cap.
+    for (NSNumber *percent in @[@NO,@YES]) {
+        NSImage *half = WattSystemMenuBattery(50,NO,NO,YES,NO,NO,percent.boolValue);
+        assert(half.size.width == 26 && half.size.height == 14);
+        assert(BatteryAlphaAt(half,2,3) > 0.99 && fabs(BatteryAlphaAt(half,20,3)-0.475) < 0.02);
+        assert(fabs(BatteryAlphaAt(half,24.5,7)-0.57) < 0.03 && BatteryAlphaAt(half,25.9,1) < 0.01);
+        assert(BatteryAlphaAt(WattSystemMenuBattery(100,NO,NO,YES,NO,NO,NO),20,7) > 0.99);
+        assert(BatteryAlphaAt(WattSystemMenuBattery(0,NO,NO,YES,NO,NO,NO),2,7) < 0.5);
+    }
+    // The number is cut out of the fill, the way Control Center shows it.
+    NSImage *numbered = WattSystemMenuBattery(68,NO,NO,YES,NO,NO,YES), *plain = WattSystemMenuBattery(68,NO,NO,YES,NO,NO,NO);
+    NSBitmapImageRep *a = [NSBitmapImageRep imageRepWithData:numbered.TIFFRepresentation];
+    NSBitmapImageRep *b = [NSBitmapImageRep imageRepWithData:plain.TIFFRepresentation];
+    NSInteger holes = 0;
+    for (NSInteger y = 0; y < a.pixelsHigh; y++) for (NSInteger x = 0; x < a.pixelsWide; x++)
+        if ([[a colorAtX:x y:y] alphaComponent] < 0.2 && [[b colorAtX:x y:y] alphaComponent] > 0.99) holes++;
+    assert(holes > 15);
+    // Charging and plugged-in marks are cut out too, with or without the number.
+    for (NSNumber *charging in @[@NO,@YES]) assert(BatteryAlphaAt(WattSystemMenuBattery(100,YES,charging.boolValue,YES,NO,NO,NO),11.5,7) < 0.2);
+    // No battery and service states still come from Apple's BatteryUIKit
+    // (rendering one first loads the framework).
+    assert(WattSystemMenuBattery(0,NO,NO,NO,NO,NO,NO));
     Class cls = NSClassFromString(@"BUIImage");
     id cache = ((id(*)(id,SEL))objc_msgSend)(cls,NSSelectorFromString(@"sharedBUIImageCache"));
     SEL selector = NSSelectorFromString(@"_modernBatteryImageForLevel:charging:pluggedIn:noBattery:needsReplacement:lowPowerMode:showPercentage:useRed:");
-    for (NSNumber *charge in @[@0,@1,@10,@20,@21,@50,@80,@99,@100]) for (NSNumber *percent in @[@NO,@YES]) {
-        for (NSArray *flags in @[@[@NO,@NO,@YES,@NO,@NO],@[@YES,@YES,@YES,@NO,@NO],
-                @[@YES,@NO,@YES,@NO,@NO],@[@NO,@NO,@YES,@NO,@YES],
-                @[@NO,@NO,@NO,@NO,@NO],@[@NO,@NO,@YES,@YES,@NO]]) {
+    for (NSNumber *charge in @[@0,@50,@100]) for (NSNumber *percent in @[@NO,@YES]) {
+        for (NSArray *flags in @[@[@NO,@NO,@NO,@NO,@NO],@[@NO,@NO,@YES,@YES,@NO]]) {
             BOOL plugged=[flags[0] boolValue], charging=[flags[1] boolValue], present=[flags[2] boolValue];
             BOOL service=[flags[3] boolValue], low=[flags[4] boolValue];
             NSImage *expected = ((id(*)(id,SEL,double,BOOL,BOOL,BOOL,BOOL,BOOL,BOOL,BOOL))objc_msgSend)(

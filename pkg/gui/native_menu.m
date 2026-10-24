@@ -573,7 +573,7 @@ static CGFloat WattStackWidth(NSArray *labels) {
     NSString *usageNote = nil;
     if (_menuPage) {
         NSInteger base = _menuPage == 1 ? 0 : 2;
-        labels = [NSMutableArray arrayWithObjects:@"5h",@"Wk",nil];
+        labels = [NSMutableArray arrayWithObjects:@"5h",@"wk",nil];
         values = [NSMutableArray array];
         for (NSInteger i=0;i<2;i++) [values addObject:_aiUsage[base+i] < 0 ? @"—" :
             [NSString stringWithFormat:@"%.0f%%",_aiUsage[base+i]]];

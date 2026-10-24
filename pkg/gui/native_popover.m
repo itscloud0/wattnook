@@ -848,7 +848,7 @@ static void Redisplay(NSView *view) {
     ((NSButton *)_metricChecks[4]).state = WattMenuBatteryIcon() ? NSControlStateValueOn : NSControlStateValueOff;
     ((NSButton *)_metricChecks[2]).toolTip = @"SSD storage space used as a percentage; read/write activity is available in System";
     ((NSButton *)_metricChecks[5]).state = WattMenuAIUsage() ? NSControlStateValueOn : NSControlStateValueOff;
-    ((NSButton *)_metricChecks[5]).toolTip = @"Every 20 seconds the menu bar shows your Claude and ChatGPT (Codex) 5-hour and weekly limits for a moment. Uses the Claude Code and Codex logins on this Mac, read only.";
+    ((NSButton *)_metricChecks[5]).toolTip = @"Every 20 seconds the menu bar shows your Claude and ChatGPT (Codex) 5-hour and weekly limits for a moment, as the share still left. Uses the Claude Code and Codex logins on this Mac, read only.";
 }
 @end
 

@@ -81,7 +81,7 @@ enum { WattHistoryCapacity = 90 };
     double _memoryPercent;
     double _diskPercent;
     NSTimeInterval _previousProcessSampleTime;
-    // Claude 5-hour, Claude week, ChatGPT 5-hour, ChatGPT week; -1 unknown.
+    // Percent left: Claude 5-hour, Claude week, ChatGPT 5-hour, ChatGPT week; -1 unknown.
     double _aiUsage[4];
     NSInteger _menuPage;
     NSTimeInterval _aiUsageRequestedAt;
