@@ -123,8 +123,11 @@ extern void battStorageAction(uintptr_t handle, uint64_t generation, int action)
 extern void battAIUsageRequested(uintptr_t handle);
 char *WattInspectStorageApplication(const char *path);
 void batt_menu_storage_update(BattMenuRef menu, uint64_t generation, const char *json);
-// Percentages are -1 when unknown; notes are tooltip lines, empty when signed out.
-void batt_menu_set_ai_usage(BattMenuRef menu, double claude_session, double claude_week, const char *claude_note,
-                            double codex_session, double codex_week, const char *codex_note);
+// AI usage providers, in WattAIProviderIDs() order: Claude, ChatGPT, Grok.
+#define WATT_AI_PROVIDERS 3
+// left holds each provider's 5-hour and weekly percent left (-1 unknown);
+// notes holds one tooltip line per provider, newline-separated, empty when
+// signed out.
+void batt_menu_set_ai_usage(BattMenuRef menu, const double *left, const char *notes);
 
 #endif

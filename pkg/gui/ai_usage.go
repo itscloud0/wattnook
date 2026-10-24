@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/charlie0129/batt/pkg/usage"
 	"github.com/sirupsen/logrus"
@@ -31,16 +32,27 @@ func battAIUsageRequested(handle C.uintptr_t) {
 		defer aiUsageBusy.Store(false)
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		claude, claudeErr := usage.Claude().ClaudeLimits(ctx)
-		codex, codexErr := usage.Codex().CodexLimits(ctx)
-		claudeNote := describeLimits("Claude", claude, claudeErr, time.Now())
-		codexNote := describeLimits("ChatGPT", codex, codexErr, time.Now())
+		// In WattAIProviderIDs() order.
+		providers := []struct {
+			name string
+			read func(context.Context) (usage.Limits, error)
+		}{
+			{"Claude", usage.Claude().ClaudeLimits},
+			{"ChatGPT", usage.Codex().CodexLimits},
+			{"Grok", usage.GrokBot().GrokLimits},
+		}
+		var left [C.WATT_AI_PROVIDERS * 2]C.double
+		notes := make([]string, len(providers))
+		for i, p := range providers {
+			limits, err := p.read(ctx)
+			left[i*2] = C.double(windowLeft(limits.Session, err))
+			left[i*2+1] = C.double(windowLeft(limits.Week, err))
+			notes[i] = describeLimits(p.name, limits, err, time.Now())
+		}
+		joined := C.CString(strings.Join(notes, "\n"))
 		runOnMain(func() {
-			withTwoCStrings(claudeNote, codexNote, func(cn, xn *C.char) {
-				C.batt_menu_set_ai_usage(c.menu.ref,
-					C.double(windowLeft(claude.Session, claudeErr)), C.double(windowLeft(claude.Week, claudeErr)), cn,
-					C.double(windowLeft(codex.Session, codexErr)), C.double(windowLeft(codex.Week, codexErr)), xn)
-			})
+			defer C.free(unsafe.Pointer(joined))
+			C.batt_menu_set_ai_usage(c.menu.ref, &left[0], joined)
 		})
 	}()
 }
@@ -53,6 +65,9 @@ func windowLeft(w *usage.Window, err error) float64 {
 	return 100 - w.Percent
 }
 
+// usageApp is the app that keeps each provider's login or reading fresh.
+var usageApp = map[string]string{"Claude": "Claude Code", "ChatGPT": "Codex", "Grok": "Grok Bot"}
+
 // describeLimits is the provider's tooltip line, e.g.
 // "Claude: 5-hour 66% left (resets 21:00), week 88% left (resets Thu 08:00)".
 func describeLimits(name string, limits usage.Limits, err error, now time.Time) string {
@@ -60,7 +75,7 @@ func describeLimits(name string, limits usage.Limits, err error, now time.Time) 
 	case errors.Is(err, usage.ErrNotSignedIn):
 		return ""
 	case errors.Is(err, usage.ErrTokenExpired):
-		return name + ": login expired — open " + map[string]string{"Claude": "Claude Code", "ChatGPT": "Codex"}[name] + " to refresh it"
+		return name + ": login expired — open " + usageApp[name] + " to refresh it"
 	case err != nil:
 		logrus.WithError(err).WithField("provider", name).Debug("usage unavailable")
 		return name + ": usage unavailable"
@@ -78,6 +93,13 @@ func describeLimits(name string, limits usage.Limits, err error, now time.Time) 
 			part += " (resets " + resetTime(w.window.ResetsAt.Local(), now.Local()) + ")"
 		}
 		parts = append(parts, part)
+	}
+	if !limits.AsOf.IsZero() {
+		// A cached reading: say how old it is, or that it predates the reset.
+		if len(parts) == 0 {
+			return name + ": weekly limit reset — open " + usageApp[name] + " to refresh it"
+		}
+		parts = append(parts, "as of "+resetTime(limits.AsOf.Local(), now.Local()))
 	}
 	if len(parts) == 0 {
 		return ""

@@ -565,11 +565,11 @@ int main(int argc, const char *argv[]) {
         [c applyAIUsagePreference]; assert(usageRequests == 1); // fresh: no second request
         CGFloat rotating = c.statusItem.button.image.size.width;
         assert(rotating == systemOnly); // usage pages fit the metrics width
-        double usage[4] = {34, 12, -1, 40};
-        [c setAIUsage:usage claudeNote:@"Claude: 5-hour 34%, week 12%" codexNote:@"ChatGPT: week 40%"];
+        double usage[WATT_AI_PROVIDERS*2] = {34, 12, -1, 40, -1, 60};
+        [c setAIUsage:usage notes:@[@"Claude: 5-hour 34%, week 12%",@"ChatGPT: week 40%",@"Grok: week 60% left"]];
         assert(c.statusItem.button.image.size.width == rotating); // data arriving changes nothing
         NSMutableArray *pageLabels = [NSMutableArray array];
-        for (NSInteger i = 0; i < 3; i++) {
+        for (NSInteger i = 0; i < 4; i++) {
             [c advanceMenuPage:nil];
             assert(c.statusItem.button.image.size.width == rotating);
             assert(c.statusItem.button.image.isTemplate);
@@ -578,20 +578,21 @@ int main(int argc, const char *argv[]) {
                 [directory stringByAppendingPathComponent:[NSString stringWithFormat:@"menu-usage-%ld.tiff",(long)i]] atomically:YES];
         }
         assert([pageLabels[0] containsString:@"Claude: 5-hour 34%"] && [pageLabels[1] containsString:@"ChatGPT: week 40%"]);
-        assert([pageLabels[2] containsString:@"SSD space used"] && ![pageLabels[2] containsString:@"Claude"]);
+        assert([pageLabels[2] containsString:@"Grok: week 60% left"]);
+        assert([pageLabels[3] containsString:@"SSD space used"] && ![pageLabels[3] containsString:@"Claude"]);
         // The user's order and choice of services decide the rotation.
         [NSUserDefaults.standardUserDefaults setObject:@[@"codex",@"bogus",@"claude",@"codex"] forKey:@"WattNookAIUsageOrder"];
-        assert([WattAIUsageOrder() isEqual:(@[@"codex",@"claude"])]);
-        assert([[c menuPages] isEqual:(@[@0,@2,@1])]);
+        assert([WattAIUsageOrder() isEqual:(@[@"codex",@"claude",@"grok"])]);
+        assert([[c menuPages] isEqual:(@[@0,@2,@1,@3])]);
         [NSUserDefaults.standardUserDefaults setObject:@[@"codex"] forKey:@"WattNookAIUsageHidden"];
-        assert([WattAIUsageShown() isEqual:@[@"claude"]] && [[c menuPages] isEqual:(@[@0,@1])]);
+        assert([WattAIUsageShown() isEqual:(@[@"claude",@"grok"])] && [[c menuPages] isEqual:(@[@0,@1,@3])]);
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookAIUsageOrder"];
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookAIUsageHidden"];
-        assert([[c menuPages] isEqual:(@[@0,@1,@2])]);
+        assert([[c menuPages] isEqual:(@[@0,@1,@2,@3])]);
         [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"WattNookMenuAIUsage"];
         [c applyAIUsagePreference];
         assert(c.menuPageTimer == nil && c.statusItem.button.image.size.width == systemOnly);
-        [c setAIUsage:usage claudeNote:@"Claude: late" codexNote:@""]; // an answer after switching off
+        [c setAIUsage:usage notes:@[@"Claude: late",@"",@""]]; // an answer after switching off
         [c advanceMenuPage:nil]; assert(![c.statusItem.button.accessibilityLabel containsString:@"Claude"]);
         [c.menuPageTimer invalidate]; c.menuPageTimer = nil;
         BattRefreshPopover(c,63,81);

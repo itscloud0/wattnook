@@ -81,8 +81,8 @@ enum { WattHistoryCapacity = 90 };
     double _memoryPercent;
     double _diskPercent;
     NSTimeInterval _previousProcessSampleTime;
-    // Percent left: Claude 5-hour, Claude week, ChatGPT 5-hour, ChatGPT week; -1 unknown.
-    double _aiUsage[4];
+    // Percent left, 5-hour then week for each provider in WattAIProviderIDs(); -1 unknown.
+    double _aiUsage[WATT_AI_PROVIDERS*2];
     NSInteger _menuPage;
     NSTimeInterval _aiUsageRequestedAt;
 }
@@ -95,8 +95,7 @@ enum { WattHistoryCapacity = 90 };
 @property(nonatomic, assign) BOOL batteryIconShowsPercent;
 // Rotates the menu-bar metrics with Claude and ChatGPT usage pages.
 @property(nonatomic, retain) NSTimer *menuPageTimer;
-@property(nonatomic, copy) NSString *claudeUsageNote;
-@property(nonatomic, copy) NSString *codexUsageNote;
+@property(nonatomic, copy) NSArray *aiUsageNotes;
 @property(nonatomic, retain) NSMenu *menu;
 @property(nonatomic, retain) NSMutableDictionary<NSNumber *, NSMenuItem *> *items;
 @property(nonatomic, retain) NSTimer *timer;
@@ -180,7 +179,7 @@ enum { WattHistoryCapacity = 90 };
 - (void)refreshStatusImage;
 - (void)applyAIUsagePreference;
 - (void)advanceMenuPage:(NSTimer *)timer;
-- (void)setAIUsage:(const double *)usage claudeNote:(NSString *)claude codexNote:(NSString *)codex;
+- (void)setAIUsage:(const double *)usage notes:(NSArray *)notes;
 - (void)updateAppStats;
 - (void)updateDiagnosticMenus;
 - (void)quitDiagnosedApp:(NSMenuItem *)sender;

@@ -20,3 +20,15 @@ func TestUsageShowsWhatIsLeft(t *testing.T) {
 		t.Fatal("windowLeft")
 	}
 }
+
+func TestCachedUsageSaysWhenItWasRead(t *testing.T) {
+	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.Local)
+	limits := usage.Limits{Week: &usage.Window{Percent: 40}, AsOf: now.Add(-2 * time.Hour)}
+	if got := describeLimits("Grok", limits, nil, now); got != "Grok: week 60% left, as of 10:00" {
+		t.Fatalf("note = %q", got)
+	}
+	limits.Week = nil
+	if got := describeLimits("Grok", limits, nil, now); got != "Grok: weekly limit reset — open Grok Bot to refresh it" {
+		t.Fatalf("note = %q", got)
+	}
+}

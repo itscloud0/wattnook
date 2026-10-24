@@ -1,5 +1,5 @@
-// Package usage reads the rate limits of the Claude and ChatGPT (Codex)
-// subscriptions signed in on this Mac, as their own CLIs report them.
+// Package usage reads the rate limits of the Claude, ChatGPT (Codex) and
+// Grok Bot subscriptions signed in on this Mac, as their own apps report them.
 //
 // It reuses the logins Claude Code and Codex already keep and only reads
 // them: tokens are never refreshed or written back, so WattNook cannot sign
@@ -31,6 +31,8 @@ type Window struct {
 type Limits struct {
 	Session *Window
 	Week    *Window
+	// AsOf is when a cached reading was taken; zero for a live one.
+	AsOf time.Time
 }
 
 var (
@@ -46,6 +48,8 @@ type Source struct {
 	Now         func() time.Time
 	// URL overrides the provider endpoint in tests.
 	URL string
+	// Dir is where a provider caches its own readings (Grok Bot).
+	Dir string
 }
 
 const (

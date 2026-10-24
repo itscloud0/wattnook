@@ -154,10 +154,8 @@ void batt_menu_set_live_status(BattMenuRef menu,
     }
 }
 
-void batt_menu_set_ai_usage(BattMenuRef menu, double claude_session, double claude_week, const char *claude_note,
-                            double codex_session, double codex_week, const char *codex_note) {
+void batt_menu_set_ai_usage(BattMenuRef menu, const double *left, const char *notes) {
     @autoreleasepool {
-        double usage[4] = {claude_session, claude_week, codex_session, codex_week};
-        [BattController(menu) setAIUsage:usage claudeNote:BattString(claude_note) codexNote:BattString(codex_note)];
+        [BattController(menu) setAIUsage:left notes:[BattString(notes) componentsSeparatedByString:@"\n"]];
     }
 }

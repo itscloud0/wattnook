@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 )
@@ -86,5 +87,54 @@ func TestRejectedLoginReadsAsExpired(t *testing.T) {
 	s = fixture(t, `{"tokens":{}}`, 200, `{}`, nil)
 	if _, err := s.CodexLimits(context.Background()); !errors.Is(err, ErrNotSignedIn) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func grokFixture(t *testing.T, cache string) Source {
+	t.Helper()
+	dir := t.TempDir()
+	write := func(key, body string) {
+		if err := os.WriteFile(grokSliceFile(dir, key), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("sand.client.slice.client-meta.account-slot", `{"schemaVersion":1,"value":"google-oauth2|user_1"}`)
+	if cache != "" {
+		write("sand.client.slice.account.google-oauth2%7Cuser_1.weekly-usage.cache", cache)
+	}
+	return Source{Dir: dir, Now: func() time.Time { return now }}
+}
+
+func TestGrokReadsItsOwnCache(t *testing.T) {
+	// 2026-10-28 and 2026-10-24 18:00 UTC.
+	s := grokFixture(t, `{"schemaVersion":2,"value":{"kind":"present","reading":{"usage":
+		{"percentUsed":40.2,"nextResetMs":1793224800000},"readAtMs":1792864800000},"expiresAtMs":0}}`)
+	limits, err := s.GrokLimits(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limits.Session != nil || limits.Week.Percent != 40.2 || limits.Week.ResetsAt.UnixMilli() != 1793224800000 ||
+		limits.AsOf.UnixMilli() != 1792864800000 {
+		t.Fatalf("%+v %+v", limits, limits.Week)
+	}
+	if grokSliceFile("", "sand.client.slice.client-meta.account-slot") !=
+		"onqw4zbomnwgszlooqxhg3djmnss4y3mnfsw45bnnvsxiyjomfrwg33vnz2c243mn52a.blob" {
+		t.Fatal("slice file name differs from Grok Bot's")
+	}
+}
+
+func TestGrokForgetsAWindowThatReset(t *testing.T) {
+	s := grokFixture(t, `{"schemaVersion":2,"value":{"kind":"present","reading":{"usage":
+		{"percentUsed":40,"nextResetMs":1792800000000},"readAtMs":1792700000000}}}`)
+	if limits, err := s.GrokLimits(context.Background()); err != nil || limits.Week != nil {
+		t.Fatalf("%+v %v", limits, err)
+	}
+	s = grokFixture(t, "")
+	if _, err := s.GrokLimits(context.Background()); !errors.Is(err, ErrNotSignedIn) {
+		t.Fatalf("err = %v", err)
+	}
+	s = grokFixture(t, `{"schemaVersion":3,"value":{}}`)
+	if _, err := s.GrokLimits(context.Background()); err == nil {
+		t.Fatal("accepted an unknown cache version")
 	}
 }
