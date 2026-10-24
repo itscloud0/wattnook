@@ -514,7 +514,7 @@ int main(int argc, const char *argv[]) {
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookMenuMetrics"];
         [c setLiveStatusCharge:48 pluggedIn:NO charging:NO heatPaused:NO];
         assert(!c.batteryIconShowsPercent);
-        // Usage pages: off by default; on, they rotate without moving the menu bar.
+        // Usage pages: off by default; on, the metrics page keeps its width.
         [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookMenuAIUsage"]; // a crashed run may leave it on
         [c applyAIUsagePreference];
         assert(!WattMenuAIUsage() && c.menuPageTimer == nil);
@@ -527,12 +527,13 @@ int main(int argc, const char *argv[]) {
         assert(c.statusItem.button.image.size.width == systemOnly); // no data, no reservation
         double usage[4] = {34, 12, -1, 40};
         [c setAIUsage:usage claudeNote:@"Claude: 5-hour 34%, week 12%" codexNote:@"ChatGPT: week 40%"];
-        CGFloat rotating = c.statusItem.button.image.size.width;
-        assert(rotating >= systemOnly);
+        assert(c.statusItem.button.image.size.width == systemOnly); // the metrics page reserves nothing
         NSMutableArray *pageLabels = [NSMutableArray array];
         for (NSInteger i = 0; i < 3; i++) {
             [c advanceMenuPage:nil];
-            assert(c.statusItem.button.image.size.width == rotating && c.statusItem.button.image.isTemplate);
+            CGFloat width = c.statusItem.button.image.size.width;
+            assert(i == 2 ? width == systemOnly : width >= systemOnly);
+            assert(c.statusItem.button.image.isTemplate);
             [pageLabels addObject:c.statusItem.button.accessibilityLabel];
             if (!getenv("WATTNOOK_CHECKS_ONLY")) [c.statusItem.button.image.TIFFRepresentation writeToFile:
                 [directory stringByAppendingPathComponent:[NSString stringWithFormat:@"menu-usage-%ld.tiff",(long)i]] atomically:YES];

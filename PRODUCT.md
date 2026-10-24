@@ -8,7 +8,7 @@ macOS native (AppKit menu-bar application with a privileged batt daemon).
 
 ### AI usage in the menu bar — 2026-10-24
 
-- Settings › Menu bar › "AI usage limits" (off by default) rotates the menu-bar metrics: system metrics for 20 s, then Claude and ChatGPT (Codex) pages for 8 s each, showing the 5-hour and weekly windows. Every page takes the widest page's width, so the menu bar never shifts.
+- Settings › Menu bar › "AI usage limits" (off by default) rotates the menu-bar metrics: system metrics for 20 s, then Claude and ChatGPT (Codex) pages for 8 s each, showing the 5-hour and weekly windows. The metrics page keeps its own width (reserving the usage pages' width left a visible gap before the battery); only the short usage glance widens the item. The pages carry the real Claude and OpenAI marks (Simple Icons paths, CC0).
 - The GUI reads the logins Claude Code (Keychain item "Claude Code-credentials" via `/usr/bin/security`, or `~/.claude/.credentials.json`) and Codex (`~/.codex/auth.json`) already keep, and asks `api.anthropic.com/api/oauth/usage` and `chatgpt.com/backend-api/wham/usage` at most every 5 min (`pkg/usage`). Tokens are never refreshed or written back, so WattNook cannot sign either tool out; an expired login hides that page until the tool refreshes it.
 
 ### Current source / GUI-only install — 2026-10-19, charge-only requirement enforced
