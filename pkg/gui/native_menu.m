@@ -705,7 +705,7 @@ static void WattPermutations(NSArray *items, NSArray *prefix, NSMutableArray *in
         values = [NSMutableArray array];
         for (NSInteger i = 0; i < 2; i++) {
             BOOL blank = weekOnly && i == 0;
-            [labels addObject:blank ? @"" : i ? @"wk" : @"5h"];
+            [labels addObject:blank ? @"" : i ? @"WKL" : @"5HR"];
             [values addObject:blank ? @"" : _aiUsage[base+i] < 0 ? @"—" :
                 [NSString stringWithFormat:@"%.0f%%",_aiUsage[base+i]]];
         }
@@ -726,7 +726,7 @@ static void WattPermutations(NSArray *items, NSArray *prefix, NSMutableArray *in
     for (NSString *label in labels) labelWidth = MAX(labelWidth,[label sizeWithAttributes:attributes].width);
     if (rotating) {
         for (NSString *label in systemLabels) labelWidth = MAX(labelWidth,[label sizeWithAttributes:systemFont].width);
-        for (NSString *label in @[@"5h",@"wk"]) labelWidth = MAX(labelWidth,[label sizeWithAttributes:usageFont].width);
+        for (NSString *label in @[@"5HR",@"WKL"]) labelWidth = MAX(labelWidth,[label sizeWithAttributes:usageFont].width);
         valueWidth = MAX([@"100%" sizeWithAttributes:usageFont].width,
             systemLabels.count ? [@"100%" sizeWithAttributes:systemFont].width : 0);
     }
