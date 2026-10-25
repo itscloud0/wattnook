@@ -548,8 +548,21 @@ static NSDictionary *WattStackFont(CGFloat size) {
 
 static NSDictionary *WattStackAttributes(NSUInteger rows) { return WattStackFont(rows > 1 ? 8.5 : 11); }
 
-// The usage pages' 11 pt mark plus its gap before the labels.
+// The pages' 11 pt mark plus its gap before the labels.
 static const CGFloat WattUsageLead = 14;
+// From the end of the labels to the start of a "100%"-wide value column.
+static const CGFloat WattStackGap = 3;
+// From the "%" to the battery: one menu-bar item's worth of breathing room,
+// the same on every page because values are right-aligned.
+static const CGFloat WattBatteryGap = 8;
+
+// The metrics page's mark while usage pages rotate, in the logos' place.
+static NSImage *WattSystemGlyph(void) {
+    static NSImage *chip;
+    if (!chip) chip = [[[NSImage imageWithSystemSymbolName:@"cpu" accessibilityDescription:nil]
+        imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPointSize:11 weight:NSFontWeightMedium]] retain];
+    return chip;
+}
 
 // Page 0 is the system metrics, then each shown provider (page n+1 for
 // WattAIProviderIDs()[n]) in the user's order, while it has data.
@@ -700,30 +713,27 @@ static void WattPermutations(NSArray *items, NSArray *prefix, NSMutableArray *in
         NSString *note = _menuPage-1 < (NSInteger)self.aiUsageNotes.count ? self.aiUsageNotes[_menuPage-1] : nil;
         usageNote = note.length ? note : nil;
     }
+    // While usage pages rotate, every page is one grid: a mark at the left
+    // (a CPU chip, or the service's logo), labels ending in one column, the
+    // percentages right-aligned in the next, and one item width. Only the
+    // mark, labels and digits change as pages turn; nothing moves.
+    BOOL rotating = WattMenuAIUsage();
+    if (rotating && !_menuPage && labels.count) glyph = WattSystemGlyph();
     NSDictionary *attributes = _menuPage ? WattStackAttributes(2) : WattStackAttributes(labels.count);
-    CGFloat labelWidth = 0, valueWidth = 0, lead = glyph ? WattUsageLead : 0;
+    NSDictionary *systemFont = WattStackAttributes(systemLabels.count), *usageFont = WattStackAttributes(2);
+    CGFloat lead = rotating ? WattUsageLead : 0, labelWidth = 0;
+    CGFloat valueWidth = labels.count ? [@"100%" sizeWithAttributes:attributes].width : 0;
     for (NSString *label in labels) labelWidth = MAX(labelWidth,[label sizeWithAttributes:attributes].width);
-    CGFloat valueX = lead+labelWidth+6;
-    // Reserve the widest value so the status item (and the popover anchored
-    // to it) does not shift as readings change.
-    valueWidth = labels.count ? [@"100%" sizeWithAttributes:attributes].width : 0;
-    for (NSString *value in values) valueWidth = MAX(valueWidth,[value sizeWithAttributes:attributes].width);
-    CGFloat stackWidth = labels.count ? ceil(valueX-1+valueWidth)+3 : 0;
-    if (WattMenuAIUsage()) {
-        // While usage pages rotate, every page shares one grid: labels end and
-        // percentages start in one column, the same few points apart on every
-        // page, and the item keeps one width, so nothing on it or beside it
-        // moves as pages change. The usage mark takes the spare room at the
-        // left that the wider metric labels leave.
-        NSDictionary *systemFont = WattStackAttributes(systemLabels.count), *usageFont = WattStackAttributes(2);
-        CGFloat systemColumn = 0, usageColumn = WattUsageLead+MAX([@"5h" sizeWithAttributes:usageFont].width,
-            [@"wk" sizeWithAttributes:usageFont].width);
-        for (NSString *label in systemLabels) systemColumn = MAX(systemColumn,[label sizeWithAttributes:systemFont].width);
-        valueX = MAX(systemColumn,usageColumn)+6;
-        valueWidth = MAX(valueWidth,MAX([@"100%" sizeWithAttributes:usageFont].width,
-            systemLabels.count ? [@"100%" sizeWithAttributes:systemFont].width : 0));
-        stackWidth = ceil(valueX-1+valueWidth)+3;
+    if (rotating) {
+        for (NSString *label in systemLabels) labelWidth = MAX(labelWidth,[label sizeWithAttributes:systemFont].width);
+        for (NSString *label in @[@"5h",@"wk"]) labelWidth = MAX(labelWidth,[label sizeWithAttributes:usageFont].width);
+        valueWidth = MAX([@"100%" sizeWithAttributes:usageFont].width,
+            systemLabels.count ? [@"100%" sizeWithAttributes:systemFont].width : 0);
     }
+    // Reserve "100%" so the item (and the popover anchored to it) keeps its
+    // width as readings change; right-aligned, the "%" never moves either.
+    CGFloat labelRight = lead+1+labelWidth, valueRight = labelRight+WattStackGap+valueWidth;
+    CGFloat stackWidth = labels.count || rotating ? ceil(valueRight) : 0;
     NSString *charge = self.powerFlowView.chargePercent < 0 ? @"—%" :
         [NSString stringWithFormat:@"%ld%%",(long)self.powerFlowView.chargePercent];
     NSDictionary *chargeStyle = @{NSFontAttributeName:
@@ -732,19 +742,25 @@ static void WattPermutations(NSArray *items, NSArray *prefix, NSMutableArray *in
     CGFloat percentGap = percent && stackWidth > 0 ? 10 : 0;
     CGFloat percentWidth = percent ? percentGap+ceil(MAX([charge sizeWithAttributes:chargeStyle].width,
         [@"100%" sizeWithAttributes:chargeStyle].width))+4 : 0;
-    CGFloat iconGap = icon && (stackWidth > 0 || percent) ? 8 : 0;
+    CGFloat iconGap = icon && (stackWidth > 0 || percent) ? WattBatteryGap : 0;
     CGFloat iconWidth = self.batteryIcon ? self.batteryIcon.size.width : 25;
     NSImage *combined = [[[NSImage alloc] initWithSize:
         NSMakeSize(MAX(24,stackWidth+percentWidth+iconGap+(icon ? iconWidth+1 : 0)),24)] autorelease];
     [combined lockFocus];
     CGFloat height = [@"100%" sizeWithAttributes:attributes].height;
-    [glyph drawInRect:NSMakeRect(1,6.5,11,11)];
+    if (glyph) {
+        // The chip symbol carries its own margin; enlarge it so its ink spans
+        // the same 11 pt as the logos.
+        CGFloat box = _menuPage ? 11 : 13.5;
+        NSSize size = glyph.size; CGFloat fit = box/MAX(size.width,size.height);
+        [glyph drawInRect:NSMakeRect(6.5-size.width*fit/2,12-size.height*fit/2,size.width*fit,size.height*fit)];
+    }
     for (NSInteger i=0;i<labels.count;i++) {
         CGFloat y = (24-height)/2 + ((labels.count-1)/2.0-i)*8;
-        // Labels end at the value column, so label-to-number spacing is the same on every page.
-        [labels[i] drawAtPoint:NSMakePoint(valueX-5-[labels[i] sizeWithAttributes:attributes].width,y)
+        [labels[i] drawAtPoint:NSMakePoint(labelRight-[labels[i] sizeWithAttributes:attributes].width,y)
             withAttributes:attributes];
-        [values[i] drawAtPoint:NSMakePoint(valueX,y) withAttributes:attributes];
+        [values[i] drawAtPoint:NSMakePoint(valueRight-[values[i] sizeWithAttributes:attributes].width,y)
+            withAttributes:attributes];
     }
     if (percent) [charge drawAtPoint:NSMakePoint(stackWidth+percentGap,
         (24-[charge sizeWithAttributes:chargeStyle].height)/2) withAttributes:chargeStyle];

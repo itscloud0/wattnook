@@ -565,7 +565,7 @@ int main(int argc, const char *argv[]) {
         [c applyAIUsagePreference]; assert(usageRequests == 1); // fresh: no second request
         CGFloat rotating = c.statusItem.button.image.size.width;
         // One width for every page: at most a few points wider than the metrics alone.
-        assert(rotating >= systemOnly && rotating-systemOnly <= 8);
+        assert(rotating >= systemOnly && rotating-systemOnly <= 22); // room for the mark
         double usage[WATT_AI_PROVIDERS*2] = {34, 12, -1, 40, -1, 60};
         [c setAIUsage:usage notes:@[@"Claude: 5-hour 34%, week 12%",@"ChatGPT: week 40%",@"Grok: week 60% left"]];
         assert(c.statusItem.button.image.size.width == rotating); // data arriving changes nothing
