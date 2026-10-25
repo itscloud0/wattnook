@@ -581,6 +581,23 @@ int main(int argc, const char *argv[]) {
         assert([pageLabels[0] containsString:@"Claude: 5-hour 34%"] && [pageLabels[1] containsString:@"ChatGPT: week 40%"]);
         assert([pageLabels[2] containsString:@"Grok: week 60% left"]);
         assert([pageLabels[3] containsString:@"SSD space used"] && ![pageLabels[3] containsString:@"Claude"]);
+        if (getenv("WATTNOOK_README")) {
+            // README: one rotation of the menu-bar item, CPU and RAM beside a
+            // charging battery with its own number (illustrative values).
+            [NSUserDefaults.standardUserDefaults setObject:@[@"CPU",@"RAM",@"Battery"] forKey:@"WattNookMenuMetrics"];
+            [c setValue:@23 forKey:@"cpuPercent"]; [c setValue:@61 forKey:@"memoryPercent"];
+            [c setLiveStatusCharge:62 pluggedIn:YES charging:YES heatPaused:NO];
+            double readmeUsage[WATT_AI_PROVIDERS*2] = {66, 88, 72, 45, -1, 60};
+            [c setAIUsage:readmeUsage notes:@[@"",@"",@""]];
+            for (NSInteger page = 0; page < 4; page++) {
+                [c setValue:@(page) forKey:@"menuPage"]; [c refreshStatusImage];
+                [c.statusItem.button.image.TIFFRepresentation writeToFile:[directory stringByAppendingPathComponent:
+                    [NSString stringWithFormat:@"readme-menu-%ld.tiff",(long)page]] atomically:YES];
+            }
+            [c setValue:@0 forKey:@"menuPage"];
+            [NSUserDefaults.standardUserDefaults removeObjectForKey:@"WattNookMenuMetrics"];
+            [c setLiveStatusCharge:48 pluggedIn:NO charging:NO heatPaused:NO];
+        }
         // The user's order and choice of services decide the rotation.
         [NSUserDefaults.standardUserDefaults setObject:@[@"codex",@"bogus",@"claude",@"codex"] forKey:@"WattNookAIUsageOrder"];
         assert([WattAIUsageOrder() isEqual:(@[@"codex",@"claude",@"grok"])]);

@@ -5,9 +5,10 @@
 <h1 align="center">WattNook</h1>
 
 <p align="center"><strong>Free battery care for Apple Silicon Macs — and it works on macOS 27.</strong><br>
-Heat Protection, charge limits from 50%, a live view of where every watt goes, and an app uninstaller.</p>
+Heat Protection, charge limits from 50%, a live view of where every watt goes, your AI limits in the menu bar, and an app uninstaller.</p>
 
 <p align="center">
+  <a href="https://github.com/itscloud0/wattnook/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/itscloud0/wattnook?color=526B80&label=release"></a>
   <a href="LICENSE"><img alt="GPL-2.0" src="https://img.shields.io/badge/license-GPL--2.0-526B80"></a>
   <img alt="macOS 15+ incl. 27" src="https://img.shields.io/badge/macOS-15%2B%20·%2027-526B80">
   <img alt="Apple Silicon" src="https://img.shields.io/badge/Apple%20Silicon-only-526B80">
@@ -16,8 +17,14 @@ Heat Protection, charge limits from 50%, a live view of where every watt goes, a
 </p>
 
 <p align="center">
+  <img src="docs/images/menu-bar.gif" width="510" alt="WattNook's menu-bar item rotating from CPU and RAM to the Claude, ChatGPT and Grok limits left, beside the macOS 27 battery">
+</p>
+
+<p align="center">
   <img src="docs/images/battery.png" width="400" alt="WattNook Battery view: charge, limit, power flow and the last 15 minutes of Mac power">
 </p>
+
+<p align="center"><a href="https://github.com/itscloud0/wattnook/releases/latest"><strong>Download the latest release →</strong></a></p>
 
 ## Why WattNook
 
@@ -27,9 +34,11 @@ macOS 27 removed the SMC keys that charge limiters relied on, so most of them qu
 - **Charge limits from 50% to 100%.** Apple's built-in setting stops at 80%. WattNook adds 50–75%, never discharges on the adapter to reach a lower limit, and keeps Apple's 80% underneath as a safety net.
 - **Sailing, Top Up and Discharge, free.** Sailing stops micro-charging: once the limit is reached the battery drifts 5–10% before charging again. Top Up charges to 100% once for a trip and restores your limit when you unplug. Discharge runs down to a lower limit while the charger stays plugged in.
 - **See where the power goes.** A live power flow shows the adapter's watts splitting between the Mac and the battery (or the battery helping a weak charger), a 15-minute strip of Mac power, battery *and* CPU temperature, and battery health.
-- **Find what's heating your Mac.** Top apps by CPU, memory or disk, memory pressure, a 15-minute history, and a normal Quit one hover away.
+- **Your AI limits at a glance.** The menu bar can rotate from CPU and RAM to how much of your Claude, ChatGPT and Grok 5-hour and weekly limits is left. Pick the services and their order; every page keeps one grid, so nothing in the menu bar shifts. WattNook reads the logins Claude Code and Codex already keep only to ask Anthropic and OpenAI for your usage, and reads Grok Bot's own cached reading; it never refreshes, copies or stores them.
+- **A menu bar that looks like macOS.** On macOS 27 the battery is drawn from Control Center's own geometry, with the charge inside it.
+- **Find what's heating your Mac.** Top apps by CPU, memory or disk, how much of each app sits in swap, memory pressure, a 15-minute history, and a normal Quit one hover away.
 - **Uninstall apps with their leftovers.** Storage sizes every app together with its caches, settings, containers and other files in `~/Library`, and moves what you pick to the Trash. Exact matches are preselected, name-only matches are not, running apps are refused, and nothing is deleted permanently. The scan keeps running when you close the popover.
-- **Keep Awake with the lid closed.** Run long jobs or remote sessions without sleep; WattNook dims the panel when the lid closes.
+- **Keep Awake with the lid closed.** Off, On, or On only while plugged in. Run long jobs or remote sessions without sleep; WattNook dims the panel when the lid closes.
 - **Light and native.** AppKit, no Electron, about 50 MB of memory when idle. Keyboard shortcuts ⌘1 / ⌘2 / ⌘3 and ⌘,.
 
 <table>
@@ -51,9 +60,9 @@ macOS 27 removed the SMC keys that charge limiters relied on, so most of them qu
    ```sh
    xattr -dr com.apple.quarantine /Applications/WattNook.app
    ```
-3. Open WattNook, click the menu-bar icon and choose **Install Daemon…**. macOS asks for your administrator password once to install the charging helper.
+3. Open WattNook, click the menu-bar icon and choose **Install Helper…**. macOS asks for your administrator password once to install the charging helper.
 
-Updating later: replace the app, open it and choose **Upgrade Daemon…** when offered. Run only one charging tool at a time: quit AlDente, batt or similar apps first.
+Updating later: replace the app, open it and choose **Update Helper…** when offered. Run only one charging tool at a time: quit AlDente, batt or similar apps first.
 
 <details>
 <summary>Build from source</summary>
@@ -62,7 +71,7 @@ Requirements: Apple Silicon, macOS 15 or later, Go and the Xcode command-line to
 
 ```sh
 git clone https://github.com/itscloud0/wattnook.git && cd wattnook
-WATTNOOK_VERSION=0.5.0 tools/build-wattnook-app.sh /tmp/WattNook.app
+WATTNOOK_VERSION=0.5.6 tools/build-wattnook-app.sh /tmp/WattNook.app
 mv /tmp/WattNook.app ~/Applications/ && open ~/Applications/WattNook.app
 ```
 
