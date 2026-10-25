@@ -710,10 +710,11 @@ static void WattPermutations(NSArray *items, NSArray *prefix, NSMutableArray *in
     for (NSString *value in values) valueWidth = MAX(valueWidth,[value sizeWithAttributes:attributes].width);
     CGFloat stackWidth = labels.count ? ceil(valueX-1+valueWidth)+3 : 0;
     if (WattMenuAIUsage()) {
-        // While usage pages rotate, every page shares one grid: the mark and
-        // "5h"/"wk" sit where "CPU"/"RAM" do, the percentages start in one
-        // column, and the item keeps one width, so nothing on it or beside it
-        // moves as pages change.
+        // While usage pages rotate, every page shares one grid: labels end and
+        // percentages start in one column, the same few points apart on every
+        // page, and the item keeps one width, so nothing on it or beside it
+        // moves as pages change. The usage mark takes the spare room at the
+        // left that the wider metric labels leave.
         NSDictionary *systemFont = WattStackAttributes(systemLabels.count), *usageFont = WattStackAttributes(2);
         CGFloat systemColumn = 0, usageColumn = WattUsageLead+MAX([@"5h" sizeWithAttributes:usageFont].width,
             [@"wk" sizeWithAttributes:usageFont].width);
@@ -740,7 +741,9 @@ static void WattPermutations(NSArray *items, NSArray *prefix, NSMutableArray *in
     [glyph drawInRect:NSMakeRect(1,6.5,11,11)];
     for (NSInteger i=0;i<labels.count;i++) {
         CGFloat y = (24-height)/2 + ((labels.count-1)/2.0-i)*8;
-        [labels[i] drawAtPoint:NSMakePoint(lead+1,y) withAttributes:attributes];
+        // Labels end at the value column, so label-to-number spacing is the same on every page.
+        [labels[i] drawAtPoint:NSMakePoint(valueX-5-[labels[i] sizeWithAttributes:attributes].width,y)
+            withAttributes:attributes];
         [values[i] drawAtPoint:NSMakePoint(valueX,y) withAttributes:attributes];
     }
     if (percent) [charge drawAtPoint:NSMakePoint(stackWidth+percentGap,
